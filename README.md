@@ -16,10 +16,12 @@ rather than in the simulator, which can't pinch.
   that moves first scrolls; held still, the item lifts; a moment later, a
   pull toward you takes it out.
 - **Press**: one pinch on a surface, told as a tap, a drag along or across,
-  a pickup and carry, or a hold.
-- **Coast**: a scroll let go on the move coasts on, and a pinch catches it.
+  a pickup and carry, or a hold. Held still, what you pinched lifts toward
+  you, and a move then carries it.
+- **Coast**: a scroll let go on the move coasts on, slowing, and a pinch
+  catches it.
 - **Hold watch**: a still hold on a handle or control, beside its own drag
-  and tap.
+  and tap, never in front of them.
 
 Work in progress: some of these are still on their way in, in the order
 `docs/design.md` gives.

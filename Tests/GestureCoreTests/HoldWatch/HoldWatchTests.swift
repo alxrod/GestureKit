@@ -5,13 +5,22 @@ import Testing
 /// A pinch on a control, watched for a hold beside the control's drag and
 /// tap.
 @Suite struct HoldWatchTests {
-    /// 0.6 s still, within about 7 mm, depth counting half.
+    /// 0.6 s still, within about 7 mm, depth counting half, and a held
+    /// pinch's tap ignored for a quarter second after its release.
     @Test func itWaitsSixTenthsOfASecondWithinTenPoints() {
         let tuning = HoldWatch.Tuning()
         #expect(tuning.duration == 0.6)
         #expect(tuning.stillDistance == 10)
         #expect(tuning.depthWeight == 0.5)
+        #expect(tuning.heldTapGrace == 0.25)
         #expect(HoldWatch().tuning == tuning)
+        #expect(HoldWatch.Tuning.defaults == tuning)
+    }
+
+    /// The lab's panel describes every number soundly.
+    @Test func itsParametersAreSound() {
+        #expect(HoldWatch.Tuning.parameterProblems.isEmpty)
+        #expect(HoldWatch.Tuning.parameters.map(\.key) == ["duration", "stillDistance", "depthWeight", "heldTapGrace"])
     }
 
     @Test func aStillPinchHoldsOnceItsTimeIsUpAndItAsked() {

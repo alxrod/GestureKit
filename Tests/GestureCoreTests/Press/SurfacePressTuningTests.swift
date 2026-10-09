@@ -101,9 +101,25 @@ private func sample(_ x: Double, moved: SIMD3<Double>, hand: SIMD3<Double>? = ni
 
     /// A tuning goes to and from JSON whole, so the lab can keep one.
     @Test func aTuningRoundTripsThroughJSON() throws {
-        let tuning = SurfacePress.Tuning(stillDistance: 12, carryDistance: 40, lift: HoldLift.Tuning(fullScale: 1.1))
+        let tuning = SurfacePress.Tuning(stillDistance: 12, carryDistance: 40, lift: HoldLift.Tuning(heldScale: 1.1))
         let data = try JSONEncoder().encode(tuning)
         #expect(try JSONDecoder().decode(SurfacePress.Tuning.self, from: data) == tuning)
+    }
+
+    /// The lab's panel describes every number soundly, each key its
+    /// property's name, so Copy tuning's Swift compiles; the lift has its
+    /// own panel.
+    @Test func itsParametersAreSound() {
+        #expect(SurfacePress.Tuning.parameterProblems.isEmpty)
+        #expect(SurfacePress.Tuning.parameters.map(\.key) == [
+            "stillDistance", "dragDistance", "depthWeight", "carryDistance", "pickUpDelay", "holdDuration",
+        ])
+        #expect(SurfacePress.Tuning.defaults == SurfacePress.Tuning())
+        #expect(SurfacePress.Tuning.swiftName == "SurfacePress.Tuning")
+        #expect(HoldLift.Tuning.swiftName == "HoldLift.Tuning")
+        let tuned = SurfacePress.Tuning(defaultsTunedWith: ["carryDistance": .number(40)])
+        #expect(tuned.carryDistance == 40)
+        #expect(tuned.swiftInitializer().contains("carryDistance: 40.0, // default 27.0"))
     }
 
     // MARK: Which way a drag runs

@@ -66,6 +66,9 @@ public struct Coast: Hashable, Sendable {
             self.stoppingSpeed = stoppingSpeed
             self.shortestCoast = shortestCoast
         }
+
+        /// GestureKit's coast.
+        public static let defaults = Tuning()
     }
 
     /// How fast it goes as it sets out, in meters a second, positive one way
@@ -166,4 +169,16 @@ public struct Coast: Hashable, Sendable {
         guard abs(distance) > room else { return self }
         return Coast(startingVelocity: startingVelocity, timeConstant: room / (startingSpeed - tuning.stoppingSpeed), tuning: tuning)
     }
+}
+
+extension Coast.Tuning: Tunable {
+    /// The coast's numbers as the lab tunes them.
+    public static let parameters: [TuningParameter<Coast.Tuning>] = [
+        .number(\.sampleSpan, key: "sampleSpan", title: "Flick measured over", unit: "s", range: 0.02...0.5, step: 0.01),
+        .number(\.slowestRelease, key: "slowestRelease", title: "Slowest flick that coasts", unit: "m/s", range: 0...0.5, step: 0.01),
+        .number(\.slowestCatch, key: "slowestCatch", title: "Slowest coast a pinch catches", unit: "m/s", range: 0...0.5, step: 0.01),
+        .number(\.timeConstant, key: "timeConstant", title: "Slows by e every", unit: "s", range: 0.1...3, step: 0.05),
+        .number(\.stoppingSpeed, key: "stoppingSpeed", title: "Stops at", unit: "m/s", range: 0.001...0.1, step: 0.001),
+        .number(\.shortestCoast, key: "shortestCoast", title: "Shortest coast", unit: "m", range: 0...0.01, step: 0.0005),
+    ]
 }
