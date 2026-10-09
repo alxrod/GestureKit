@@ -1,0 +1,12 @@
+// Template for machine-specific signing config.
+//
+// Copy this file to `Local.xcconfig` (gitignored) and set your Apple
+// Developer team ID. GestureLab's `Lab/Signing.xcconfig` includes it, so
+// automatic signing finds the team without it ever being written into the
+// committed project file.
+//
+// Use the Team ID from the developer account membership page or the signing
+// certificate subject's OU field — not the parenthesized suffix printed by
+// `security find-identity -v -p codesigning`, which can differ.
+
+DEVELOPMENT_TEAM =
