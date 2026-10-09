@@ -178,9 +178,11 @@ import Testing
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
-        _ = pinches.armPull(at: at(0.7))
-        #expect(pinches.press?.armedAt == .zero)
-        #expect(moved(&pinches, 0, 15, 0, at: 0.9).actions == [.beginPull])
+        #expect(pinches.armPull(at: at(0.7)).actions == [.pullArmed])
+        #expect(pinches.press?.armedAt == nil)
+        let first = moved(&pinches, 0, 15, 0, at: 0.9)
+        #expect(first.actions == [.beginPull])
+        #expect(first.why == .pulled(PluckPullJudgement(depth: 0, drift: 15, threshold: 8.16, verdict: .pulls, origin: .touch)))
     }
 
     /// The rest stays: the lift outlives a press its scroll's stopping

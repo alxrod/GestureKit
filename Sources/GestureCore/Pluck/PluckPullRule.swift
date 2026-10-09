@@ -67,7 +67,8 @@ public enum PluckPullOrigin: String, Equatable, Sendable, Codable {
     /// may pull the instant it arms: as the pluck first shipped.
     case touch
     /// Where the pinch stood as its pull armed, as the drag last said, so
-    /// only a move made since counts: the default.
+    /// only a move made since counts: the default, which measures from the
+    /// touch while the drag hadn't spoken by the arming.
     case arming
 }
 

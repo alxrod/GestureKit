@@ -95,9 +95,10 @@ public struct PluckPress: Equatable, Sendable {
     /// in the item's points; nil until it speaks.
     public private(set) var dragTranslation: SIMD3<Double>?
     /// Where the pinch stood as its pull armed, from where it touched, in
-    /// the item's points: the drag's last word then, or zero, the touch,
-    /// should the drag not have spoken by then, since the pinch stood within
-    /// the drag's start of the touch. Nil until the pull arms.
+    /// the item's points, as the drag last said then. Nil until the pull
+    /// arms, and after, should the drag not have spoken by then: the pinch
+    /// stood within the drag's start of the touch, and its pull is measured
+    /// from the touch.
     public private(set) var armedAt: SIMD3<Double>?
     /// Whether the pull's drag has the pinch: it has spoken, and not yet
     /// ended or been cancelled.
@@ -156,7 +157,7 @@ public struct PluckPress: Equatable, Sendable {
             return []
         }
         isArmed = true
-        armedAt = dragTranslation ?? .zero
+        armedAt = dragTranslation
         why = .armed
         return [.pullArmed]
     }
@@ -211,7 +212,7 @@ public struct PluckPress: Equatable, Sendable {
             why = .notArmedYet
             return []
         }
-        let judgement = tuning.judgePull(translation, armedAt: armedAt ?? .zero, pointsPerMeter: pointsPerMeter)
+        let judgement = tuning.judgePull(translation, armedAt: armedAt, pointsPerMeter: pointsPerMeter)
         guard judgement.isPull else {
             why = .notAPull(judgement)
             return []

@@ -266,12 +266,15 @@ public struct PluckTuning: Equatable, Sendable, Codable {
 
     /// Judges whether an armed pinch at `translation` from where it touched,
     /// in the item's points, pulls its item out, by the pull rule, at
-    /// `pointsPerMeter`: its move from `armedAt`, where it stood as its pull
-    /// armed, should the tuning measure from there, else from the touch.
-    public func judgePull(_ translation: SIMD3<Double>, armedAt: SIMD3<Double>, pointsPerMeter: Double) -> PluckPullJudgement {
-        let origin = pullOrigin
-        let move = origin == .arming ? translation - armedAt : translation
-        return pullRule.judge(viewerTranslation(move), threshold: pullThreshold(pointsPerMeter: pointsPerMeter), from: origin)
+    /// `pointsPerMeter`: its move from `armedAt`, where the drag said it
+    /// stood as its pull armed, should the tuning measure from there; else,
+    /// or with the drag silent then, nil, its move from the touch.
+    public func judgePull(_ translation: SIMD3<Double>, armedAt: SIMD3<Double>?, pointsPerMeter: Double) -> PluckPullJudgement {
+        let threshold = pullThreshold(pointsPerMeter: pointsPerMeter)
+        guard measuresPullFromArming, let armedAt else {
+            return pullRule.judge(viewerTranslation(translation), threshold: threshold, from: .touch)
+        }
+        return pullRule.judge(viewerTranslation(translation - armedAt), threshold: threshold, from: .arming)
     }
 }
 
