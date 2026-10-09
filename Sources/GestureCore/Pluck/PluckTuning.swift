@@ -1,15 +1,18 @@
 /// The numbers and choices a pluck goes by: how long and how still a pinch
 /// on an item in a scrolling container is held before the item lifts, how
-/// long after the lift its pull arms, which moves pull it out, and what the
-/// container's scroll does meanwhile. Every rule reads them from here, so
-/// the lab can change them live; a pinch keeps the tuning it began with, so
-/// each pinch in a trace is judged by one tuning.
+/// long after the lift its pull arms, which moves pull it out, what the
+/// container's scroll does meanwhile, and, for the visionOS adapter, how its
+/// gestures attach and how the lift and the pull look. Every rule reads them
+/// from here, so the lab can change them live; a pinch keeps the tuning it
+/// began with, so each pinch in a trace is judged by one tuning.
 ///
-/// The defaults are the ones the pluck shipped with: a pinch that moves
-/// first is the container's scroll; held still half a second, the item
-/// lifts and the container's scroll stops under it; two tenths of a second
-/// later, a move of 2 cm toward the viewer, 1 deep for every 2 across,
-/// pulls it out.
+/// The defaults: a pinch that moves first is the container's scroll; held
+/// still half a second, the item lifts and the container's scroll stops
+/// under it; two tenths of a second later, a move of 2 cm toward the viewer,
+/// 1 deep for every 2 across, pulls it out. They're the numbers the pluck
+/// first shipped with but one: a lifted item stays up as the hold's press
+/// ends while the drag hasn't spoken, since stopping the container's scroll
+/// as the item lifts may cancel the press (`pressEndSettlesLiftedItem`).
 ///
 /// Distances on the item are in its own points, as a SwiftUI drag reports
 /// them, with +z toward the viewer; the pull's distance is in meters, which
@@ -49,12 +52,19 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// item's points (`pullThreshold(pointsPerMeter:)`).
     public var pullDistance: Double
 
-    /// Which moves of an armed pinch pull its item out: by default out of
-    /// the container's plane, 1 deep for every 2 across.
-    public var pullRule: PluckPullRule
+    /// How deep a pull must go for each unit it drifts across the
+    /// container's plane: 0.5, 1 deep for every 2 across, so a move must
+    /// leave the plane at about 27° or more. At 0, any move far enough
+    /// toward the viewer pulls, however far it drifts across.
+    public var pullDepthPerDrift: Double
+
+    /// Whether any move as far as the pull's distance pulls, across or in
+    /// depth, toward the viewer or away, the depth per drift aside: for
+    /// telling whether an armed pinch's moves are heard at all.
+    public var pullsAnyDirection: Bool
 
     /// Whether a drag's z grows toward the viewer, as SwiftUI's does, which
-    /// the pull rule takes it to: false reads it the other way round, to try
+    /// the pull rule takes it to: off reads it the other way round, to try
     /// whether the drag the pull hears runs its depth away from the viewer.
     public var depthGrowsTowardViewer: Bool
 
@@ -76,13 +86,13 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public var scrollSettlesLiftedItem: Bool
 
     /// Whether a lifted item settles as the hold's press ends while the
-    /// drag doesn't have the pinch: on by default, the press's end being
-    /// the pinch let go. Off, the item stays lifted, so a press that ends
-    /// as the lift stops the container's scroll, as it might, doesn't drop
-    /// it; it settles then as the drag ends or is cancelled, the next pinch
-    /// begins, or the item goes. Nothing may tell that the pinch was let go
-    /// should the drag never speak, so it's best tried with a drag that
-    /// starts at 0 pt.
+    /// drag doesn't have the pinch. Off by default: the item stays lifted,
+    /// so a press that ends as the lift stops the container's scroll, as it
+    /// may, doesn't drop it and lose its pull. It settles then as the drag
+    /// ends or is cancelled, as the item's tap comes on release, before or
+    /// after the press's end, as the next pinch on it or anywhere else in
+    /// the container begins, or as the item goes. On, as the pluck first
+    /// shipped, the press's end is the pinch let go.
     public var pressEndSettlesLiftedItem: Bool
 
     /// How long, in seconds, after a pinch that lifted its item is over its
@@ -92,33 +102,80 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// next pinch's touch, end it.
     public var releaseTapGrace: Double
 
-    /// A tuning with the defaults the pluck shipped with, changed as given.
+    /// For the adapter: whether the hold counts from the pull's drag rather
+    /// than from the item's press. Off by default: the item is a button,
+    /// whose press the hold counts from, and whose tap is the item's. On,
+    /// the item has no button, its drag is its only gesture, the hold counts
+    /// from the drag's first word, and a pinch the drag tells nothing of as
+    /// it ends is the item's tap; lower the drag's start with it, to 0 pt,
+    /// so the drag hears the touch.
+    public var holdsFromTheDrag: Bool
+
+    /// For the adapter: whether the pull's drag is attached beside the
+    /// item's own gestures, as a simultaneous gesture, as by default; off,
+    /// it's attached as an ordinary gesture, which the item's button takes
+    /// precedence over.
+    public var pullDragIsSimultaneous: Bool
+
+    /// For the adapter: how far in front of the drag's location what an item
+    /// pulls out stands, in the item's points, so it comes out in front of
+    /// the window rather than inside it: 100 pt.
+    public var pushTowardViewer: Double
+
+    /// For the adapter: how much larger a lifted item shows: 8%.
+    public var liftScale: Double
+
+    /// For the adapter: how far toward the viewer a lifted item stands, in
+    /// its points: 36 pt, about 2.6 cm at a window's own size.
+    public var liftDepth: Double
+
+    /// A tuning with GestureKit's defaults, changed as given.
     public init(
         holdDuration: Double = 0.5,
         holdStillness: Double = 15,
         pullArmDelay: Double = 0.2,
         dragStartDistance: Double = 15,
         pullDistance: Double = 0.02,
-        pullRule: PluckPullRule = .outOfThePlane(depthPerDrift: 0.5),
+        pullDepthPerDrift: Double = 0.5,
+        pullsAnyDirection: Bool = false,
         depthGrowsTowardViewer: Bool = true,
         depthScale: Double = 1,
         stopsScrollUnderLiftedItem: Bool = true,
         scrollSettlesLiftedItem: Bool = true,
-        pressEndSettlesLiftedItem: Bool = true,
-        releaseTapGrace: Double = 1
+        pressEndSettlesLiftedItem: Bool = false,
+        releaseTapGrace: Double = 1,
+        holdsFromTheDrag: Bool = false,
+        pullDragIsSimultaneous: Bool = true,
+        pushTowardViewer: Double = 100,
+        liftScale: Double = 1.08,
+        liftDepth: Double = 36
     ) {
         self.holdDuration = holdDuration
         self.holdStillness = holdStillness
         self.pullArmDelay = pullArmDelay
         self.dragStartDistance = dragStartDistance
         self.pullDistance = pullDistance
-        self.pullRule = pullRule
+        self.pullDepthPerDrift = pullDepthPerDrift
+        self.pullsAnyDirection = pullsAnyDirection
         self.depthGrowsTowardViewer = depthGrowsTowardViewer
         self.depthScale = depthScale
         self.stopsScrollUnderLiftedItem = stopsScrollUnderLiftedItem
         self.scrollSettlesLiftedItem = scrollSettlesLiftedItem
         self.pressEndSettlesLiftedItem = pressEndSettlesLiftedItem
         self.releaseTapGrace = releaseTapGrace
+        self.holdsFromTheDrag = holdsFromTheDrag
+        self.pullDragIsSimultaneous = pullDragIsSimultaneous
+        self.pushTowardViewer = pushTowardViewer
+        self.liftScale = liftScale
+        self.liftDepth = liftDepth
+    }
+
+    /// Which moves of an armed pinch pull its item out: any way, should the
+    /// tuning say so; else toward the viewer, at `pullDepthPerDrift` deep
+    /// for each unit across, however far across at 0.
+    public var pullRule: PluckPullRule {
+        if pullsAnyDirection { return .anyDirection }
+        return pullDepthPerDrift > 0 ? .outOfThePlane(depthPerDrift: pullDepthPerDrift) : .towardTheViewer
     }
 
     /// How long a pinch is held before its item lifts.
@@ -165,4 +222,29 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public func judgePull(_ translation: SIMD3<Double>, pointsPerMeter: Double) -> PluckPullJudgement {
         pullRule.judge(viewerTranslation(translation), threshold: pullThreshold(pointsPerMeter: pointsPerMeter))
     }
+}
+
+extension PluckTuning: Tunable {
+    public static var defaults: PluckTuning { PluckTuning() }
+
+    public static let parameters: [TuningParameter<PluckTuning>] = [
+        .number(\.holdDuration, key: "holdDuration", title: "Hold", unit: "s", range: 0.1...2, step: 0.05),
+        .number(\.holdStillness, key: "holdStillness", title: "Hold stillness", unit: "pt", range: 0...60, step: 1),
+        .number(\.pullArmDelay, key: "pullArmDelay", title: "Pull arms after the lift", unit: "s", range: 0...1, step: 0.05),
+        .number(\.dragStartDistance, key: "dragStartDistance", title: "Drag start", unit: "pt", range: 0...60, step: 1),
+        .number(\.pullDistance, key: "pullDistance", title: "Pull distance", unit: "m", range: 0.005...0.1, step: 0.005),
+        .number(\.pullDepthPerDrift, key: "pullDepthPerDrift", title: "Pull depth per drift across", range: 0...3, step: 0.05),
+        .toggle(\.pullsAnyDirection, key: "pullsAnyDirection", title: "Any direction pulls"),
+        .toggle(\.depthGrowsTowardViewer, key: "depthGrowsTowardViewer", title: "Drag's z grows toward you"),
+        .number(\.depthScale, key: "depthScale", title: "Drag's depth scale", range: 0.25...4, step: 0.05),
+        .toggle(\.stopsScrollUnderLiftedItem, key: "stopsScrollUnderLiftedItem", title: "Scroll stops under a lifted item"),
+        .toggle(\.scrollSettlesLiftedItem, key: "scrollSettlesLiftedItem", title: "A scroll settles a lifted item"),
+        .toggle(\.pressEndSettlesLiftedItem, key: "pressEndSettlesLiftedItem", title: "The press's end settles a lifted item"),
+        .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),
+        .toggle(\.holdsFromTheDrag, key: "holdsFromTheDrag", title: "Hold counts from the drag, not a button"),
+        .toggle(\.pullDragIsSimultaneous, key: "pullDragIsSimultaneous", title: "Pull drag is simultaneous"),
+        .number(\.pushTowardViewer, key: "pushTowardViewer", title: "Pulled thing's push toward you", unit: "pt", range: 0...300, step: 5),
+        .number(\.liftScale, key: "liftScale", title: "Lift scale", range: 1...1.3, step: 0.01),
+        .number(\.liftDepth, key: "liftDepth", title: "Lift depth", unit: "pt", range: 0...120, step: 2),
+    ]
 }

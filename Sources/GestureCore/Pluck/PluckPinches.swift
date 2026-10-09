@@ -260,7 +260,11 @@ public struct PluckPinches: Sendable {
         guard press != nil else { return Told(why: .noPinch) }
         isHolding = false
         pressEndedAt = now
-        let (actions, why) = tell { $0.pressEnded() }
+        var (actions, why) = tell { $0.pressEnded() }
+        if why == .liftOutlivesItsPress, tapCame {
+            // Its tap came already, so the pinch was let go.
+            (actions, why) = tell { $0.releaseTapped() }
+        }
         noteSettling(actions, at: now)
         let ended = endIfOver(.letGo, at: now)
         return Told(actions: actions, why: why, countdowns: ended == nil ? [] : Self.stopBoth, ended: ended)
@@ -347,6 +351,43 @@ public struct PluckPinches: Sendable {
             }
         }
         return Tap(isRelease: false, sinceTouch: sinceTouch)
+    }
+
+    /// The container began to scroll during the pinch, as its scroll view
+    /// says, at `now`: before the hold, the pinch is a scroll, and its hold
+    /// stops counting; lifted, its item settles, as the tuning says. One
+    /// neither gesture has any more, as the scroll view took it, is over.
+    public mutating func containerScrolled(at now: ContinuousClock.Instant) -> Told {
+        guard press != nil else { return Told(why: .noPinch) }
+        let (actions, why) = tell { $0.containerScrolled() }
+        noteSettling(actions, at: now)
+        var countdowns: [Countdown] = actions.contains(.stayDown(.containerScrolled)) ? [.stopHold] : []
+        let ended = endIfOver(.cancelled, at: now)
+        if ended != nil {
+            countdowns = Self.stopBoth
+        }
+        return Told(actions: actions, why: why, countdowns: countdowns, ended: ended)
+    }
+
+    /// A pinch began on another item of the container, at `now`: should
+    /// neither gesture have this one, its item kept up past its press, it's
+    /// over, its end unseen, and its item settles, so a press cancelled as
+    /// the lift stopped the scroll never keeps the item up, and the scroll
+    /// off, past the next pinch anywhere.
+    public mutating func pinchBeganElsewhere(at now: ContinuousClock.Instant) -> Told {
+        guard let press else { return Told(why: .noPinch) }
+        guard press.isLifted, !isHolding, !isDragging else { return Told(why: .toldAlready) }
+        let (actions, why) = tell { $0.pinchBeganElsewhere() }
+        noteSettling(actions, at: now)
+        let ended = end(.unseen, at: now)
+        return Told(actions: actions, why: why, countdowns: Self.stopBoth, ended: ended)
+    }
+
+    /// Whether the pinch under way has its item kept up past its press:
+    /// lifted, with neither its press nor its drag having it.
+    public var isKeptUpPastItsPress: Bool {
+        guard let press else { return false }
+        return press.isLifted && !isHolding && !isDragging
     }
 
     /// The item went mid-pinch: its pull is taken away and the item let
