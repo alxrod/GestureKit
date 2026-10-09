@@ -217,8 +217,10 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public var pullDragIsSimultaneous: Bool
 
     /// For the adapter: how far in front of the drag's location what an item
-    /// pulls out stands, in the item's points, so it comes out in front of
-    /// the window rather than inside it: 100 pt.
+    /// pulls out spawns, in the item's points, so it comes out in front of
+    /// the window rather than inside it: 100 pt. The carry of what spawned
+    /// keeps that offset from the hand, as it carries its middle 1:1 from
+    /// where it spawned.
     public var pushTowardViewer: Double
 
     /// For the adapter: how much larger a lifted item shows: 8%.

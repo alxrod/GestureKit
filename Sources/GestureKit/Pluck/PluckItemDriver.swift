@@ -170,11 +170,13 @@ final class PluckItemDriver {
 
     /// How much larger than its own size the item's window is drawn in the
     /// immersive space: its transform's scale across; nil with the space
-    /// closed, or a scale that isn't one.
+    /// closed, or a scale outside a quarter to four times, which no window
+    /// is drawn at, so a reading gone wrong never shrinks the break-free
+    /// distance to nothing, as the 6 mm one spawned the item at once.
     private func windowScale() -> Double? {
         guard let transform = proxy?.transform(in: .immersiveSpace) else { return nil }
         let scale = Double(transform.scale.width)
-        return scale.isFinite && scale > 0.01 ? scale : nil
+        return scale.isFinite && (0.25...4).contains(scale) ? scale : nil
     }
 
     // MARK: The container's words
