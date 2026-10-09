@@ -6,7 +6,8 @@ import SwiftUI
 /// events: what it was on, its outcome and how long it lasted, a track with
 /// a mark at each event's time, and each event's time, name, and detail.
 /// Large, white on black, so a screen recording made on the headset reads
-/// it, and it updates as the recorder does.
+/// it, and it updates as the recorder shows its log (`shownLog`), at most
+/// ten times a second.
 ///
 /// It takes all the room it's offered, whatever it shows, and lays out what
 /// it shows in that room alone, so an event, which changes what it shows,
@@ -44,9 +45,9 @@ private struct TraceViewContent: View {
                     .font(.system(size: 30, weight: .bold))
                 Spacer()
                 Button("Clear") { recorder.clear() }
-                    .disabled(recorder.interactions.isEmpty)
+                    .disabled(recorder.shownInteractions.isEmpty)
             }
-            if recorder.interactions.isEmpty {
+            if recorder.shownInteractions.isEmpty {
                 Text("Nothing yet. Try the gesture, and each interaction shows here, newest first.")
                     .font(.system(size: 20))
                     .foregroundStyle(.white.opacity(0.7))
@@ -54,7 +55,7 @@ private struct TraceViewContent: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(recorder.interactions) { interaction in
+                        ForEach(recorder.shownInteractions) { interaction in
                             TraceInteractionTimeline(interaction: interaction)
                                 .equatable()
                         }
