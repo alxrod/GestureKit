@@ -16,8 +16,9 @@ struct PluckLabCard: Identifiable, Equatable {
 
 /// The pluck's station: a grid of numbered items in a window of its own, as
 /// a library's, each pluckable, with nothing scrolling around it. A pinch
-/// that scrolls it is its scroll; held still a quarter second, an item lifts
-/// and the scroll stops; lifted, it follows the hand a little, held to its
+/// is its scroll unless it's a hold: one the grid scrolls with, whose
+/// content moves at all, or that moves 10 pt up or down, is its scroll;
+/// held still a quarter second, an item lifts and the scroll stops; lifted, it follows the hand a little, held to its
 /// place, until the hand has gone 2.5 cm, when it breaks free and spawns as
 /// a card at the hand. From there the pluck's part is over: the same pinch
 /// carries the card by the carry's own rules, 1:1, clear of the head, and
@@ -241,7 +242,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand any way and the lifted item follows a little, held to its place, pulling harder the farther you go. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. The trace shows each pinch: the hold, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand any way and the lifted item follows a little, held to its place, pulling harder the farther you go. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. To try giving a held item back to the scroll as your hand moves up or down, turn on its switch in the tuning.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
@@ -280,7 +281,7 @@ private struct PluckLabGridWindow: View {
         #if DEBUG
         .labLoadScrolls()
         #endif
-        .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
+        .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace, scrollAxes: .vertical)
         .ignoresSafeArea()
         .id(station.spaceAppearances)
         // Four columns at the least, as a library window's.
