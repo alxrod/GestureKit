@@ -14,9 +14,9 @@
 ///   says (`scrollSettlesLiftedItem`), as the container begins to scroll.
 /// - **Its scroll is held off** while an item is lifted, if the tuning
 ///   stops it; the caller disables its scroll view's scrolling meanwhile.
-public struct PluckContainer<Item: Hashable & Sendable>: Sendable {
+public struct PluckContainer<Item: Hashable> {
     /// What a word to the container changed.
-    public struct Change: Equatable, Sendable {
+    public struct Change: Equatable {
         /// The item that settled, if one did.
         public var settled: Item?
         /// Whether the container's scroll is held off now.
@@ -119,3 +119,6 @@ public struct PluckContainer<Item: Hashable & Sendable>: Sendable {
         return Change(settled: settled, holdsItsScroll: holdsItsScroll, scrollHoldChanged: held != holdsItsScroll)
     }
 }
+
+extension PluckContainer: Sendable where Item: Sendable {}
+extension PluckContainer.Change: Sendable where Item: Sendable {}
