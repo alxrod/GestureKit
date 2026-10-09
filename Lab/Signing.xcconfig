@@ -1,0 +1,5 @@
+// GestureLab's signing: the development team from the gitignored
+// Local.xcconfig at the repository's root, if it's there (copy
+// Local.xcconfig.example). Without it, the lab still builds for the
+// simulator, and scripts/build-check.sh builds with signing off.
+#include? "../Local.xcconfig"
