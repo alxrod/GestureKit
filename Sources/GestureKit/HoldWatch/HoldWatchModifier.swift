@@ -64,7 +64,7 @@ extension View {
 }
 
 /// `.holdWatch`'s modifier: the watch on the pinch under way, its timer, and
-/// its trace.
+/// its trace, kept in a reference (`HoldWatchPinch`).
 private struct HoldWatchModifier: ViewModifier {
     @Binding var isHeld: Bool
     let dragHasBegun: Bool
@@ -74,17 +74,12 @@ private struct HoldWatchModifier: ViewModifier {
     let traceTitle: String
     let onHeldStill: @MainActor () -> Bool
 
-    /// The watch on the pinch under way; nil between pinches.
-    @State private var watch: HoldWatch?
-    /// Counts the pinches, so a timer never acts on a later pinch than its
-    /// own.
-    @State private var serial = 0
-    /// Asks once the pinch under way has been held still long enough.
-    @State private var timer: Task<Void, Never>?
-    /// When the pinch under way touched.
-    @State private var touchedAt: ContinuousClock.Instant?
-    /// The pinch's trace, while one is under way and there's a recorder.
-    @State private var trace: InteractionTrace?
+    /// The pinch under way, kept in a reference made once for the view:
+    /// each of a drag's words changes it, and as `@State` each change made
+    /// SwiftUI run this modifier's body again, its gestures and all, as a
+    /// hand moved; through a reference, nothing SwiftUI watches changes but
+    /// `isHeld`, as a pinch holds and as its grace ends.
+    @State private var pinch = HoldWatchPinch()
     /// True while a pinch is under way, from its touch; SwiftUI resets it as
     /// the pinch ends and as it's cancelled.
     @GestureState private var isPressing = false
@@ -97,10 +92,10 @@ private struct HoldWatchModifier: ViewModifier {
                 pinchEnded()
             }
             .onChange(of: dragHasBegun) { _, begun in
-                guard begun, var watched = watch, watched.stage == .waiting else { return }
+                guard begun, var watched = pinch.watch, watched.stage == .waiting else { return }
                 watched.dragBegan()
-                watch = watched
-                trace?.event("drag began", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
+                pinch.watch = watched
+                pinch.trace?.event("drag began", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
             }
             .onDisappear { pinchEnded() }
             #if DEBUG
@@ -123,51 +118,51 @@ private struct HoldWatchModifier: ViewModifier {
 
     /// How long the pinch under way has lasted, in seconds.
     private var elapsed: Double {
-        touchedAt.map { (ContinuousClock.now - $0) / .seconds(1) } ?? 0
+        pinch.touchedAt.map { (ContinuousClock.now - $0) / .seconds(1) } ?? 0
     }
 
     /// The pinch touched, on its first change, or moved: the watch is told
     /// how far it's gone, which gives the hold up once it's too far.
     private func pinchMoved(_ moved: Vector3D) {
-        if watch == nil {
+        if pinch.watch == nil {
             pinchBegan()
         }
-        guard var watched = watch else { return }
+        guard var watched = pinch.watch else { return }
         let gaveUp = watched.move(SIMD3(moved.x, moved.y, moved.z))
-        watch = watched
+        pinch.watch = watched
         guard gaveUp else { return }
-        trace?.event("moved off", String(format: "%.1f pt, past %.1f, after %@: the pinch is the control's", watched.farthest, tuning.stillDistance, holdWatchSeconds(elapsed)))
+        pinch.trace?.event("moved off", String(format: "%.1f pt, past %.1f, after %@: the pinch is the control's", watched.farthest, tuning.stillDistance, holdWatchSeconds(elapsed)))
     }
 
     /// A pinch touched: its timer starts, which asks once it's been held
     /// still long enough, if it hasn't moved off or begun the view's drag.
     private func pinchBegan() {
-        serial += 1
+        pinch.serial += 1
         isHeld = false
-        watch = HoldWatch(tuning: tuning)
-        touchedAt = .now
-        trace = recorder?.begin("HoldWatch", title: traceTitle)
-        trace?.event("touch", "holds at \(holdWatchSeconds(tuning.duration)) within \(String(format: "%.1f pt", tuning.stillDistance))")
+        pinch.watch = HoldWatch(tuning: tuning)
+        pinch.touchedAt = .now
+        pinch.trace = recorder?.begin("HoldWatch", title: traceTitle)
+        pinch.trace?.event("touch", "holds at \(holdWatchSeconds(tuning.duration)) within \(String(format: "%.1f pt", tuning.stillDistance))")
         if dragHasBegun {
-            watch?.dragBegan()
-            trace?.event("drag began", "as it touched: the pinch is the control's")
+            pinch.watch?.dragBegan()
+            pinch.trace?.event("drag began", "as it touched: the pinch is the control's")
         }
-        timer?.cancel()
-        let counting = serial
-        timer = Task { @MainActor in
+        pinch.timer?.cancel()
+        let counting = pinch.serial
+        pinch.timer = Task { @MainActor in
             try? await Task.sleep(for: .seconds(tuning.duration))
-            guard !Task.isCancelled, serial == counting, var watched = watch, watched.stage == .waiting else { return }
+            guard !Task.isCancelled, pinch.serial == counting, var watched = pinch.watch, watched.stage == .waiting else { return }
             let held = watched.timeIsUp(asking: onHeldStill)
-            watch = watched
+            pinch.watch = watched
             if held {
                 isHeld = true
-                if let trace {
+                if let trace = pinch.trace {
                     trace.event("hold", String(format: "held still %@ within %.1f pt: the rest of the pinch is the hold's", holdWatchSeconds(elapsed), watched.farthest))
                 } else {
                     holdWatchLogger.info("\(traceTitle): held still \(watched.tuning.duration, format: .fixed(precision: 2), privacy: .public) s, the rest of the pinch is the hold's")
                 }
             } else {
-                trace?.event("asked nothing", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
+                pinch.trace?.event("asked nothing", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
             }
         }
     }
@@ -177,28 +172,46 @@ private struct HoldWatchModifier: ViewModifier {
     /// release's tap, whichever way SwiftUI orders the release's callbacks,
     /// is the hold's.
     private func pinchEnded() {
-        timer?.cancel()
-        timer = nil
-        guard let watched = watch else { return }
-        watch = nil
+        pinch.timer?.cancel()
+        pinch.timer = nil
+        guard let watched = pinch.watch else { return }
+        pinch.watch = nil
         let outcome: String = switch watched.stage {
         case .held: "hold"
         case .gaveUp: "the control's"
         case .waiting: "let go before its hold"
         }
-        trace?.event("release", "after \(holdWatchSeconds(elapsed)), \(String(format: "%.1f pt", watched.farthest)) at the farthest")
-        trace?.finish(outcome)
-        trace = nil
-        touchedAt = nil
+        pinch.trace?.event("release", "after \(holdWatchSeconds(elapsed)), \(String(format: "%.1f pt", watched.farthest)) at the farthest")
+        pinch.trace?.finish(outcome)
+        pinch.trace = nil
+        pinch.touchedAt = nil
         guard watched.holds else { return }
-        let counting = serial
+        let counting = pinch.serial
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(watched.tuning.heldTapGrace))
-            if serial == counting {
+            if pinch.serial == counting {
                 isHeld = false
             }
         }
     }
+}
+
+/// The pinch under way on a hold watch's view: its watch, its count, its
+/// timer, its touch, and its trace.
+@MainActor
+private final class HoldWatchPinch {
+    /// The watch on the pinch under way; nil between pinches.
+    var watch: HoldWatch?
+    /// Counts the pinches, so a timer never acts on a later pinch than its
+    /// own.
+    var serial = 0
+    /// Asks once the pinch under way has been held still long enough.
+    var timer: Task<Void, Never>?
+    /// When the pinch under way touched.
+    var touchedAt: ContinuousClock.Instant?
+    /// The pinch's trace, while one is under way and there's a recorder
+    /// recording.
+    var trace: InteractionTrace?
 }
 
 /// `seconds` for a trace: "0.60 s".
