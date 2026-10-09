@@ -26,11 +26,12 @@ public enum PluckEvent: Equatable, Sendable {
 extension View {
     /// Makes this view an item a pinch can pluck out of the scrolling
     /// container around it, which `pluckContainer(_:tuning:trace:)` marks:
-    /// a pinch that moves first is the container's scroll; held still, the
-    /// item lifts, and the container's scroll stops under it, as tuned; a
-    /// moment later its pull arms, and a move toward the viewer pulls it out,
-    /// reported through `perform`, with where the pull is in the immersive
-    /// space. A pinch let go before anything else is the item's tap.
+    /// a pinch the container scrolls with, or that moves far first, is the
+    /// container's scroll; held still, the item lifts, and the container's
+    /// scroll stops under it, as tuned; a moment later its pull arms, and a
+    /// small move any way, 6 mm by default, pulls it out, reported through
+    /// `perform`, with where the pull is in the immersive space. A pinch let
+    /// go before anything else is the item's tap.
     ///
     /// `id` names the item among its container's; `title` names it in the
     /// trace and the log. The item draws its own lift (`liftEffect`), so
