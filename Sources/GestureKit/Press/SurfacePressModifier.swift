@@ -191,8 +191,9 @@ private func surfacePressSettleSpring(_ lift: HoldLift.Tuning) -> Animation {
     .spring(duration: max(lift.settleDuration, 0.01), bounce: 0)
 }
 
-/// `.surfacePress`'s modifier: the press under way, its clock, its lift, and
-/// its trace.
+/// `.surfacePress`'s modifier: the press under way, its clock, and its
+/// trace, kept in a reference (`SurfacePressPinch`), and its lift, which
+/// only the lift's own modifier reads (`SurfacePressLiftEffect`).
 private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     let hitShape: HitShape
     let tuning: SurfacePress.Tuning
@@ -212,28 +213,16 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
 
     @Environment(\.physicalMetrics) private var physicalMetrics
 
-    /// The pinch under way, told as it goes; nil between pinches.
-    @State private var press: SurfacePress?
-    /// Counts the pinches, so a timer or a cancel waiting its turn never acts
-    /// on a later pinch than its own.
-    @State private var serial = 0
-    /// When the pinch under way touched.
-    @State private var touchedAt: ContinuousClock.Instant?
-    /// Where the pinch under way touched, in this view's points.
-    @State private var touchPoint: CGPoint?
-    /// Where the last pinch the gesture's reset cancelled touched, so its own
-    /// release, should it come after the cancel, isn't taken for a pinch
-    /// whose first change never came; nil once another touches.
-    @State private var cancelledTouchPoint: CGPoint?
-    /// The pinch's trace, while one is under way and there's a recorder.
-    @State private var trace: InteractionTrace?
-    /// Whether the pinch under way had its carry refused.
-    @State private var carryWasRefused = false
-    /// How what's drawn looks lifted (`HoldLift`).
-    @State private var look = HoldLift.Look.rest
-    /// Counts the pinch's frames, picking up and holding as their times come
-    /// and lifting what's drawn, while anything may still change.
-    @State private var clock: Task<Void, Never>?
+    /// The pinch under way, its clock, and its trace, kept in a reference
+    /// made once for the view: each of a drag's words changes them, and as
+    /// `@State` each change made SwiftUI run this modifier's body again, its
+    /// gestures and all, as a hand moved; through a reference, nothing
+    /// SwiftUI watches changes but how what's drawn lifts.
+    @State private var pinch = SurfacePressPinch()
+    /// How what's drawn looks lifted (`HoldLift`), which only the lift's
+    /// own modifier reads (`SurfacePressLiftEffect`), so a frame of the lift
+    /// draws the lift again and nothing else.
+    @State private var lift = SurfacePressLift()
     /// True while a pinch is under way, from its touch. SwiftUI resets it as
     /// the pinch ends and as it's cancelled, and only the end calls
     /// `onEnded`, so its going false with a pinch left over, still a turn
@@ -241,19 +230,13 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     @GestureState private var isPressing = false
     /// True while a two-handed pinch is under way.
     @GestureState private var isMagnifying = false
-    /// Whether the pinch under way gave way to a two-handed one: the rest of
-    /// it is that one's.
-    @State private var gaveWayToMagnify = false
-    /// Whether a two-handed pinch from here is under way.
-    @State private var magnifyUnderWay = false
 
     func body(content: Content) -> some View {
         content
             // Held still, what's drawn lifts toward the viewer and grows
             // about its anchor; the pinch is taken outside the lift, so its
             // points don't move as it lifts.
-            .scaleEffect(look.scale, anchor: liftAnchor)
-            .offset(z: points(look.depth))
+            .modifier(SurfacePressLiftEffect(lift: lift, anchor: liftAnchor))
             .contentShape(.interaction, hitShape)
             .gesture(pressGesture)
             .simultaneousGesture(magnifyGesture, including: onMagnify == nil ? .none : .all)
@@ -264,15 +247,15 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             // way then, unended by a release.
             .onChange(of: isPressing) { _, pressing in
                 guard !pressing else { return }
-                guard press != nil else {
-                    gaveWayToMagnify = false
+                guard pinch.press != nil else {
+                    pinch.gaveWayToMagnify = false
                     return
                 }
-                let waiting = serial
+                let waiting = pinch.serial
                 Task { @MainActor in
                     await Task.yield()
-                    guard serial == waiting, press != nil else { return }
-                    cancelledTouchPoint = touchPoint
+                    guard pinch.serial == waiting, pinch.press != nil else { return }
+                    pinch.cancelledTouchPoint = pinch.touchPoint
                     pressCancelled(because: "the system cancelled its gesture")
                 }
             }
@@ -282,7 +265,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             }
             // The view going ends a pinch on it, as a cancel does.
             .onDisappear {
-                guard press != nil else { return }
+                guard pinch.press != nil else { return }
                 pressCancelled(because: "its view went")
             }
             #if DEBUG
@@ -305,9 +288,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// Begins the pinch on its first change, where it touched, then tells it
     /// where the pinch is at each.
     private func pressChanged(_ word: SurfacePressWord?) {
-        guard let word, !gaveWayToMagnify else { return }
-        if press == nil {
-            touchPoint = word.start
+        guard let word, !pinch.gaveWayToMagnify else { return }
+        if pinch.press == nil {
+            pinch.touchPoint = word.start
             pressBegan(at: along(word.start.x), hand: word.handStart.map { handPlace($0) })
         }
         let moved = word.translation
@@ -316,7 +299,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             moved: SIMD3(moved.x, moved.y, moved.z),
             hand: word.hand.map { handPlace($0) }
         )
-        guard let actions = press?.move(sample) else { return }
+        guard let actions = pinch.press?.move(sample) else { return }
         handle(actions)
     }
 
@@ -325,7 +308,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// and holds as their times come.
     private func pressBegan(at along: Double, hand: SIMD3<Double>?) {
         let caughtACoast = catchCoast()
-        press = SurfacePress(
+        pinch.press = SurfacePress(
             at: along,
             canHold: canHold,
             hand: hand,
@@ -334,12 +317,12 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             canPickUp: canPickUp,
             tuning: tuning
         )
-        serial += 1
-        touchedAt = .now
-        cancelledTouchPoint = nil
-        carryWasRefused = false
-        trace = recorder?.begin("Press", title: traceTitle)
-        if let trace {
+        pinch.serial += 1
+        pinch.touchedAt = .now
+        pinch.cancelledTouchPoint = nil
+        pinch.carryWasRefused = false
+        pinch.trace = recorder?.begin("Press", title: traceTitle)
+        if let trace = pinch.trace {
             var traits = [surfacePressMeters(along) + " along"]
             if canPickUp { traits.append("picks up at \(tuning.pickUpDelayLabel)") }
             if canHold { traits.append("holds at \(tuning.holdDurationLabel)") }
@@ -348,7 +331,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             trace.event("touch", traits.joined(separator: "; "))
         }
         onPinchUnderWay(true)
-        runClock(serial: serial)
+        runClock(serial: pinch.serial)
     }
 
     /// Counts the pinch's frames from its touch, on the continuous clock:
@@ -357,24 +340,24 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// either may still change. A pinch that moved off once picked up eases
     /// back from what its hold had raised to its picked-up look.
     private func runClock(serial counting: Int) {
-        clock?.cancel()
-        clock = Task { @MainActor in
-            while !Task.isCancelled, serial == counting, let touchedAt, press != nil {
+        pinch.clock?.cancel()
+        pinch.clock = Task { @MainActor in
+            while !Task.isCancelled, pinch.serial == counting, let touchedAt = pinch.touchedAt, pinch.press != nil {
                 let elapsed = (ContinuousClock.now - touchedAt) / .seconds(1)
-                if press?.isPickUpDue(after: elapsed) == true {
+                if pinch.press?.isPickUpDue(after: elapsed) == true {
                     pickUp(after: elapsed)
                 }
-                if press?.isHoldDue(after: elapsed) == true, let actions = press?.holdTimerFired() {
+                if pinch.press?.isHoldDue(after: elapsed) == true, let actions = pinch.press?.holdTimerFired() {
                     handle(actions)
                 }
-                guard !Task.isCancelled, let told = press else { return }
+                guard !Task.isCancelled, let told = pinch.press else { return }
                 let mayChange = HoldLift.mayChange(after: elapsed, of: told)
                 if showsLift {
                     let target = HoldLift.look(after: elapsed, of: told)
                     if mayChange {
-                        if target != look { look = target }
-                    } else if target != look {
-                        withAnimation(surfacePressSettleSpring(told.tuning.lift)) { look = target }
+                        if target != lift.look { lift.look = target }
+                    } else if target != lift.look {
+                        withAnimation(surfacePressSettleSpring(told.tuning.lift)) { lift.look = target }
                     }
                 }
                 guard mayChange || told.canStillHold else { return }
@@ -388,8 +371,8 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// goes on as one that never could.
     private func pickUp(after elapsed: Double) {
         if let reason = pickUpRefusal() {
-            press?.refusePickUp()
-            if let trace {
+            pinch.press?.refusePickUp()
+            if let trace = pinch.trace {
                 trace.event("pickup refused", reason)
             } else {
                 surfacePressLogger.info("""
@@ -399,7 +382,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             }
             return
         }
-        guard let actions = press?.pickUpTimerFired() else { return }
+        guard let actions = pinch.press?.pickUpTimerFired() else { return }
         handle(actions)
     }
 
@@ -407,21 +390,21 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// here, so its tap isn't lost, but the release of a pinch already
     /// cancelled is ignored.
     private func pressEnded(_ word: SurfacePressWord?) {
-        guard !gaveWayToMagnify else {
-            gaveWayToMagnify = false
+        guard !pinch.gaveWayToMagnify else {
+            pinch.gaveWayToMagnify = false
             return
         }
-        if press == nil, let word {
-            if let cancelledTouchPoint, word.start == cancelledTouchPoint {
-                self.cancelledTouchPoint = nil
+        if pinch.press == nil, let word {
+            if let cancelledTouchPoint = pinch.cancelledTouchPoint, word.start == cancelledTouchPoint {
+                pinch.cancelledTouchPoint = nil
                 return
             }
             pressChanged(word)
         }
-        guard var ended = press else { return }
+        guard var ended = pinch.press else { return }
         let stage = ended.stage
         let actions = ended.end()
-        press = ended
+        pinch.press = ended
         handle(actions)
         finish(outcome: outcome(of: actions, from: stage, of: ended, cancelled: false))
     }
@@ -430,32 +413,32 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// along lands, a scroll stops, a carry goes back, and a hold ends, but
     /// it's no tap.
     private func pressCancelled(because why: String) {
-        guard var cancelled = press else { return }
-        trace?.event("cancel", why)
+        guard var cancelled = pinch.press else { return }
+        pinch.trace?.event("cancel", why)
         let stage = cancelled.stage
         let actions = cancelled.cancel()
-        press = cancelled
+        pinch.press = cancelled
         handle(actions)
         finish(outcome: outcome(of: actions, from: stage, of: cancelled, cancelled: true))
     }
 
     /// Forgets the pinch, its clock, and its trace, settling what's drawn.
     private func finish(outcome: String) {
-        press = nil
-        touchPoint = nil
+        pinch.press = nil
+        pinch.touchPoint = nil
         settle()
-        trace?.finish(outcome)
-        trace = nil
+        pinch.trace?.finish(outcome)
+        pinch.trace = nil
         onPinchUnderWay(false)
     }
 
     /// Stops the clock and brings what's drawn back down from its lift.
     private func settle() {
-        clock?.cancel()
-        clock = nil
-        guard look != .rest else { return }
+        pinch.clock?.cancel()
+        pinch.clock = nil
+        guard lift.look != .rest else { return }
         withAnimation(surfacePressSettleSpring(tuning.lift)) {
-            look = .rest
+            lift.look = .rest
         }
     }
 
@@ -463,12 +446,12 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// app refuses is refused here, and the lift settles as the pinch moves
     /// off before it picked up, carries, or holds.
     private func handle(_ actions: [SurfacePress.Action]) {
-        guard let told = press else { return }
-        let elapsed = touchedAt.map { (ContinuousClock.now - $0) / .seconds(1) } ?? 0
+        guard let told = pinch.press else { return }
+        let elapsed = pinch.touchedAt.map { (ContinuousClock.now - $0) / .seconds(1) } ?? 0
         for action in actions {
             traceEvent(for: action, of: told, after: elapsed)
             let refusal = SurfacePressCarryRefusal()
-            perform(SurfacePressEvent(action: action, press: press ?? told, elapsed: elapsed, carryRefusal: refusal))
+            perform(SurfacePressEvent(action: action, press: pinch.press ?? told, elapsed: elapsed, carryRefusal: refusal))
             switch action {
             case .giveUpHold where !told.isPickedUp:
                 settle()
@@ -477,9 +460,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             case .beginCarry:
                 settle()
                 if let reason = refusal.reason {
-                    press?.refuseCarry()
-                    carryWasRefused = true
-                    if let trace {
+                    pinch.press?.refuseCarry()
+                    pinch.carryWasRefused = true
+                    if let trace = pinch.trace {
                         trace.event("carry refused", reason)
                     } else {
                         surfacePressLogger.info("\(traceTitle): its carry was refused, since \(reason)")
@@ -494,7 +477,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// Writes what the pinch was told to its trace, with how far it had
     /// moved, which way, and when.
     private func traceEvent(for action: SurfacePress.Action, of told: SurfacePress, after elapsed: Double) {
-        guard let trace else { return }
+        guard let trace = pinch.trace else { return }
         let when = surfacePressSeconds(elapsed)
         switch action {
         case .tap(let along):
@@ -551,7 +534,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         let came: String
         if let ending {
             came = ending
-        } else if carryWasRefused {
+        } else if pinch.carryWasRefused {
             came = "carry refused"
         } else if stage == .draggingAcross {
             came = "drag across"
@@ -586,7 +569,7 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         case .moved(let points, _, _):
             pressChanged(SurfacePressWord(standingInFor: points))
         case .released:
-            pressEnded(press == nil ? nil : SurfacePressWord(standingInFor: .zero))
+            pressEnded(pinch.press == nil ? nil : SurfacePressWord(standingInFor: .zero))
         }
     }
     #endif
@@ -600,8 +583,8 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         MagnifyGesture()
             .updating($isMagnifying) { _, magnifying, _ in magnifying = true }
             .onChanged { value in
-                if !magnifyUnderWay {
-                    magnifyUnderWay = true
+                if !pinch.magnifyUnderWay {
+                    pinch.magnifyUnderWay = true
                     giveWayToMagnify()
                     onMagnify?(.began(at: along(value.startLocation.x)))
                 }
@@ -613,8 +596,8 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// The press under way gives way to the two-handed pinch its first hand
     /// has become: what it began ends, as a cancel ends it, never a tap.
     private func giveWayToMagnify() {
-        gaveWayToMagnify = true
-        guard press != nil else { return }
+        pinch.gaveWayToMagnify = true
+        guard pinch.press != nil else { return }
         pressCancelled(because: "it gave way to a two-handed pinch")
     }
 
@@ -623,11 +606,11 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// giving way, the next pinch is taken afresh. One that began where no
     /// press began would otherwise leave the press giving way to nothing.
     private func magnifyEnded() {
-        if gaveWayToMagnify, !isPressing {
-            gaveWayToMagnify = false
+        if pinch.gaveWayToMagnify, !isPressing {
+            pinch.gaveWayToMagnify = false
         }
-        guard magnifyUnderWay else { return }
-        magnifyUnderWay = false
+        guard pinch.magnifyUnderWay else { return }
+        pinch.magnifyUnderWay = false
         onMagnify?(.ended)
     }
 
@@ -639,16 +622,67 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         Double(physicalMetrics.convert(points, to: .meters)) + alongOffset
     }
 
-    /// `meters` in this view's points.
-    private func points(_ meters: Double) -> CGFloat {
-        physicalMetrics.convert(meters, from: .meters)
-    }
-
     /// Where the hand is at `point`, in the immersive space's points, in
     /// meters with y up.
     private func handPlace(_ point: Point3D) -> SIMD3<Double> {
         let meters = physicalMetrics.convert(point, to: .meters)
         return SIMD3(meters.x, -meters.y, meters.z)
+    }
+}
+
+/// A press's pinch under way on its view, and what it has done: the press
+/// as told, the clock counting its frames, its trace, and how it touched,
+/// was cancelled, and gave way to two hands.
+@MainActor
+private final class SurfacePressPinch {
+    /// The pinch under way, told as it goes; nil between pinches.
+    var press: SurfacePress?
+    /// Counts the pinches, so a timer or a cancel waiting its turn never acts
+    /// on a later pinch than its own.
+    var serial = 0
+    /// When the pinch under way touched.
+    var touchedAt: ContinuousClock.Instant?
+    /// Where the pinch under way touched, in the view's points.
+    var touchPoint: CGPoint?
+    /// Where the last pinch the gesture's reset cancelled touched, so its own
+    /// release, should it come after the cancel, isn't taken for a pinch
+    /// whose first change never came; nil once another touches.
+    var cancelledTouchPoint: CGPoint?
+    /// The pinch's trace, while one is under way and there's a recorder
+    /// recording.
+    var trace: InteractionTrace?
+    /// Whether the pinch under way had its carry refused.
+    var carryWasRefused = false
+    /// Counts the pinch's frames, picking up and holding as their times come
+    /// and lifting what's drawn, while anything may still change.
+    var clock: Task<Void, Never>?
+    /// Whether the pinch under way gave way to a two-handed one: the rest of
+    /// it is that one's.
+    var gaveWayToMagnify = false
+    /// Whether a two-handed pinch from the view is under way.
+    var magnifyUnderWay = false
+}
+
+/// How what a press's view draws looks lifted, the one thing of a pinch a
+/// view draws from, observed by the lift's own modifier alone.
+@MainActor @Observable
+private final class SurfacePressLift {
+    var look = HoldLift.Look.rest
+}
+
+/// What a press's view draws, lifted as its pinch's lift says: grown about
+/// its anchor and brought toward the viewer. Reading the lift here, apart
+/// from the press's gestures, has a frame of the lift draw it again and run
+/// nothing else.
+private struct SurfacePressLiftEffect: ViewModifier {
+    let lift: SurfacePressLift
+    let anchor: UnitPoint
+    @Environment(\.physicalMetrics) private var physicalMetrics
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(lift.look.scale, anchor: anchor)
+            .offset(z: physicalMetrics.convert(lift.look.depth, from: .meters))
     }
 }
 
