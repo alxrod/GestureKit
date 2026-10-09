@@ -17,16 +17,16 @@ import SwiftUI
 ///         let id = "carry"
 ///         let title = "Carry"
 ///         let summary = "A panel carried by its grab handle, 1:1 with the hand."
-///         let tuning = TuningStore<Carry.Tuning>(namespace: "GestureLab.carry")
+///         let tuning = TuningStore<CarryTuning>(namespace: "GestureLab.carry")
 ///         let trace = TraceRecorder(logsSummariesPublicly: true)
 ///
 ///         static func registerComponents() {
-///             GrabHandleComponent.registerComponent()
+///             // Each RealityKit component and system its space uses.
 ///         }
 ///
 ///         var windowContent: some View { Text("Pinch the handle under the panel and carry it.") }
 ///         var spaceContent: some View { CarrySpace(station: self) }
-///         var tuningContent: some View { TuningPanel(tuning) }
+///         var tuningContent: some View { TuningPanel(tuning, title: "Carry") }
 ///     }
 @MainActor
 protocol LabStation: AnyObject {
