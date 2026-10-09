@@ -7,6 +7,8 @@ import Testing
     /// A pill as visionOS's window bar is, 128 by 16 pt, its top 12 pt below
     /// the panel's bottom edge, centered under it.
     @Test func itsAPillJustUnderThePanel() {
+        #expect(PlacementTuning.standard.handleWidth == 128)
+        #expect(PlacementTuning.standard.handleHeight == 16)
         #expect(PlacementTuning.standard.handleSize == SIMD2(128, 16))
         #expect(PlacementTuning.standard.handleGap == 12)
         #expect(PanelHandle.middle(belowPanelOfHeight: 300) == -(150 + 12 + 8))
@@ -42,7 +44,7 @@ import Testing
     /// Tuned otherwise, its reach still begins at the panel's bottom edge,
     /// however big the pill and its gap.
     @Test func tunedOtherwiseItsReachStillBeginsAtThePanelsEdge() {
-        let tuning = PlacementTuning(handleSize: SIMD2(200, 24), handleGap: 20, handleReachBeyondEnds: 10, handleReachHeight: 80)
+        let tuning = PlacementTuning(handleWidth: 200, handleHeight: 24, handleGap: 20, handleReachBeyondEnds: 10, handleReachHeight: 80)
         let reach = PanelHandle.reach(tuning: tuning)
         #expect(reach == SIMD2(220, 80))
         let height = 400.0

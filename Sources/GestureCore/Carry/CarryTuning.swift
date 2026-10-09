@@ -25,3 +25,14 @@ public struct CarryTuning: Equatable, Sendable, Codable {
     /// The numbers the carry was settled on with.
     public static let standard = CarryTuning()
 }
+
+extension CarryTuning: Tunable {
+    public static var defaults: CarryTuning { .standard }
+
+    public static let parameters: [TuningParameter<CarryTuning>] = [
+        .number(\.startDistance, key: "startDistance", title: "Start distance",
+                unit: "pt", range: 0...40, step: 1),
+        .number(\.nearestToHead, key: "nearestToHead", title: "Nearest to the head",
+                unit: "m", range: 0.1...1, step: 0.01),
+    ]
+}

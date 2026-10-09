@@ -33,9 +33,13 @@ public struct PlacementTuning: Equatable, Sendable, Codable {
     /// top of the head instead.
     public var leastLevelGaze: Float
 
-    /// How big the handle's pill is drawn, in points: 128 by 16, as
-    /// visionOS's window bar is.
-    public var handleSize: SIMD2<Double>
+    /// How wide the handle's pill is drawn, in points: 128, as visionOS's
+    /// window bar is.
+    public var handleWidth: Double
+
+    /// How tall the handle's pill is drawn, in points: 16, as visionOS's
+    /// window bar is.
+    public var handleHeight: Double
 
     /// How far below the panel's bottom edge the pill's top stands, in
     /// points: 12.
@@ -55,7 +59,8 @@ public struct PlacementTuning: Equatable, Sendable, Codable {
         steepestDegrees: Float = 60,
         looksAsBigAsAt: Float = 1,
         leastLevelGaze: Float = 0.1,
-        handleSize: SIMD2<Double> = SIMD2(128, 16),
+        handleWidth: Double = 128,
+        handleHeight: Double = 16,
         handleGap: Double = 12,
         handleReachBeyondEnds: Double = 22,
         handleReachHeight: Double = 60
@@ -65,7 +70,8 @@ public struct PlacementTuning: Equatable, Sendable, Codable {
         self.steepestDegrees = steepestDegrees
         self.looksAsBigAsAt = looksAsBigAsAt
         self.leastLevelGaze = leastLevelGaze
-        self.handleSize = handleSize
+        self.handleWidth = handleWidth
+        self.handleHeight = handleHeight
         self.handleGap = handleGap
         self.handleReachBeyondEnds = handleReachBeyondEnds
         self.handleReachHeight = handleReachHeight
@@ -85,6 +91,12 @@ public struct PlacementTuning: Equatable, Sendable, Codable {
         steepestDegrees * .pi / 180
     }
 
+    /// How big the handle's pill is drawn, in points: `handleWidth` by
+    /// `handleHeight`.
+    public var handleSize: SIMD2<Double> {
+        SIMD2(handleWidth, handleHeight)
+    }
+
     /// How the panel is scaled, so that `distance` out it looks as big as it
     /// does drawn whole `looksAsBigAsAt` out: 0.7. Drawn whole 0.7 m out, an
     /// 860 pt panel, at 1360 pt to the meter, would be 0.63 m wide, 48°
@@ -92,4 +104,31 @@ public struct PlacementTuning: Equatable, Sendable, Codable {
     public var scale: Float {
         distance / looksAsBigAsAt
     }
+}
+
+extension PlacementTuning: Tunable {
+    public static var defaults: PlacementTuning { .standard }
+
+    public static let parameters: [TuningParameter<PlacementTuning>] = [
+        .number(\.distance, key: "distance", title: "Distance from the head",
+                unit: "m", range: 0.3...2, step: 0.01),
+        .number(\.belowTheGazeDegrees, key: "belowTheGazeDegrees", title: "Below the gaze",
+                unit: "°", range: 0...60, step: 1),
+        .number(\.steepestDegrees, key: "steepestDegrees", title: "Steepest from level",
+                unit: "°", range: 10...90, step: 1),
+        .number(\.looksAsBigAsAt, key: "looksAsBigAsAt", title: "Looks as big as at",
+                unit: "m", range: 0.3...3, step: 0.05),
+        .number(\.leastLevelGaze, key: "leastLevelGaze", title: "Least level gaze",
+                range: 0.01...0.5, step: 0.01),
+        .number(\.handleWidth, key: "handleWidth", title: "Handle width",
+                unit: "pt", range: 40...400, step: 1),
+        .number(\.handleHeight, key: "handleHeight", title: "Handle height",
+                unit: "pt", range: 4...60, step: 1),
+        .number(\.handleGap, key: "handleGap", title: "Handle's gap below the panel",
+                unit: "pt", range: 0...80, step: 1),
+        .number(\.handleReachBeyondEnds, key: "handleReachBeyondEnds", title: "Handle's reach beyond its ends",
+                unit: "pt", range: 0...80, step: 1),
+        .number(\.handleReachHeight, key: "handleReachHeight", title: "Handle's reach, tall",
+                unit: "pt", range: 20...160, step: 1),
+    ]
 }
