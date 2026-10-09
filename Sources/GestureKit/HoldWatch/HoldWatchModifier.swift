@@ -36,7 +36,9 @@ extension View {
     ///     the hold up for the rest of the pinch.
     ///   - isEnabled: whether it watches at all.
     ///   - tuning: the numbers it goes by, read as each pinch touches.
-    ///   - recorder: where each pinch is traced; nil traces nothing.
+    ///   - recorder: where each pinch is traced, its summary the console's
+    ///     line; nil, or one not recording, traces nothing, and the console
+    ///     gets a line only for a pinch that holds.
     ///   - traceTitle: what each pinch's trace is called.
     ///   - onHeldStill: asked once the pinch has been held still long
     ///     enough: does what the hold does, and says whether it did.
@@ -159,8 +161,11 @@ private struct HoldWatchModifier: ViewModifier {
             watch = watched
             if held {
                 isHeld = true
-                trace?.event("hold", String(format: "held still %@ within %.1f pt: the rest of the pinch is the hold's", holdWatchSeconds(elapsed), watched.farthest))
-                holdWatchLogger.info("A pinch on \(traceTitle) held, still for \(watched.tuning.duration, format: .fixed(precision: 2), privacy: .public) s")
+                if let trace {
+                    trace.event("hold", String(format: "held still %@ within %.1f pt: the rest of the pinch is the hold's", holdWatchSeconds(elapsed), watched.farthest))
+                } else {
+                    holdWatchLogger.info("\(traceTitle): held still \(watched.tuning.duration, format: .fixed(precision: 2), privacy: .public) s, the rest of the pinch is the hold's")
+                }
             } else {
                 trace?.event("asked nothing", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
             }

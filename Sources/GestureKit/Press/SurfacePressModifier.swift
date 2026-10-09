@@ -80,8 +80,10 @@ extension View {
     ///
     /// - Parameters:
     ///   - tuning: the numbers it goes by, read as each pinch touches.
-    ///   - recorder: where each pinch is traced, from its touch to its end;
-    ///     nil traces nothing.
+    ///   - recorder: where each pinch is traced, from its touch to its end,
+    ///     its summary the console's line; nil, or one not recording, traces
+    ///     nothing, and the console gets a line only for a pickup or a carry
+    ///     the app refused.
     ///   - traceTitle: what each pinch's trace is called.
     ///   - canHold: whether a pinch here holds, held still for
     ///     `holdDuration`.
@@ -336,13 +338,15 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         touchedAt = .now
         cancelledTouchPoint = nil
         carryWasRefused = false
-        var traits: [String] = []
-        if canPickUp { traits.append("picks up at \(tuning.pickUpDelayLabel)") }
-        if canHold { traits.append("holds at \(tuning.holdDurationLabel)") }
-        if dragAlongScrolls { traits.append("a drag along scrolls") }
-        if caughtACoast { traits.append("caught a coast") }
         trace = recorder?.begin("Press", title: traceTitle)
-        trace?.event("touch", ([surfacePressMeters(along) + " along"] + traits).joined(separator: "; "))
+        if let trace {
+            var traits = [surfacePressMeters(along) + " along"]
+            if canPickUp { traits.append("picks up at \(tuning.pickUpDelayLabel)") }
+            if canHold { traits.append("holds at \(tuning.holdDurationLabel)") }
+            if dragAlongScrolls { traits.append("a drag along scrolls") }
+            if caughtACoast { traits.append("caught a coast") }
+            trace.event("touch", traits.joined(separator: "; "))
+        }
         onPinchUnderWay(true)
         runClock(serial: serial)
     }
@@ -385,11 +389,14 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     private func pickUp(after elapsed: Double) {
         if let reason = pickUpRefusal() {
             press?.refusePickUp()
-            trace?.event("pickup refused", reason)
-            surfacePressLogger.info("""
-                A pinch on \(traceTitle) was held still \(elapsed, format: .fixed(precision: 2), privacy: .public) s, \
-                but doesn't pick up, since \(reason)
-                """)
+            if let trace {
+                trace.event("pickup refused", reason)
+            } else {
+                surfacePressLogger.info("""
+                    \(traceTitle): held still \(elapsed, format: .fixed(precision: 2), privacy: .public) s, \
+                    but it doesn't pick up, since \(reason)
+                    """)
+            }
             return
         }
         guard let actions = press?.pickUpTimerFired() else { return }
@@ -472,8 +479,11 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
                 if let reason = refusal.reason {
                     press?.refuseCarry()
                     carryWasRefused = true
-                    trace?.event("carry refused", reason)
-                    surfacePressLogger.info("The carry a pinch on \(traceTitle) began was refused: \(reason)")
+                    if let trace {
+                        trace.event("carry refused", reason)
+                    } else {
+                        surfacePressLogger.info("\(traceTitle): its carry was refused, since \(reason)")
+                    }
                 }
             default:
                 break
