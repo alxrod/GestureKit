@@ -4,11 +4,14 @@ Content-agnostic gestures for Apple Vision Pro, settled on the headset
 rather than in the simulator, which can't pinch.
 
 - **Carry**: a grab handle carries a thing 1:1 with the hand, never nearer
-  your head than 0.3 m.
+  your head than 0.3 m: a clear handle entity with a hover glow, and an
+  entity-targeted drag that tells you each step, or moves the entity for
+  you.
 - **Facing**: a thing turns to face you, standing on a point or hanging
-  from one.
+  from one, once or every frame as you move, with world tracking for where
+  your head is.
 - **Placement**: a panel opens below your gaze, tilted up to you, and stays
-  put until you carry it.
+  put until you carry it by the pill under it.
 - **Pluck**: pull an item out of a scrolling grid into the room. A pinch
   that moves first scrolls; held still, the item lifts; a moment later, a
   pull toward you takes it out.
