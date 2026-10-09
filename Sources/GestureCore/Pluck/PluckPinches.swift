@@ -18,8 +18,9 @@
 ///   nor its container's scroll off.
 /// - **Its hold** comes as the caller's count says, and lifts the item if
 ///   the press or the drag still has the pinch and the container didn't
-///   scroll during it; a pinch let go before then, or moved past the hold's
-///   stillness first, lifts nothing.
+///   scroll during it, as its scroll view and its scroll offset say
+///   (`scrollOffset(_:at:)`); a pinch let go before then, or moved past the
+///   hold's stillness first, along the scroll or any way, lifts nothing.
 /// - **Lifted, it's held**: its item follows the hand a little on its
 ///   tether, short of breaking free (`stretch`, `PluckTether`).
 /// - **Its pull arms** once `pullArmDelay` has passed since its item
@@ -51,8 +52,8 @@ public struct PluckPinches: Sendable {
             /// Let go before anything else: the item's tap.
             case tap
             /// Its container scrolled during it, or its drag moved past the
-            /// hold's stillness before its hold: the container's scroll, or
-            /// nothing.
+            /// hold's stillness before its hold, or its lifted item gave it
+            /// back to the scroll: the container's scroll, or nothing.
             case scroll
             /// Its hold lifted the item, and it pulled nothing.
             case lift
@@ -107,6 +108,13 @@ public struct PluckPinches: Sendable {
         /// before it ended should its hold never come; 0 if its drag didn't
         /// speak by then.
         public var farthestBeforeHold: Double
+        /// The farthest of that along the container's scroll, in the item's
+        /// points.
+        public var farthestAlongScrollBeforeHold: Double
+        /// The farthest the container's scroll offset moved from where it
+        /// stood at the touch before its hold came, or before it ended
+        /// should its hold never come, in points; nil if none was read.
+        public var scrollOffsetMovedBeforeHold: Double?
         /// The farthest it stretched toward breaking its item free while
         /// the item was lifted, by the pull rule's measure, in the item's
         /// points; 0 if its drag never spoke with the item lifted.
@@ -182,6 +190,10 @@ public struct PluckPinches: Sendable {
     /// The tuning each new pinch takes; one under way keeps its own.
     public var tuning: PluckTuning
 
+    /// The axes the container scrolls along, as it says, which each new
+    /// pinch takes: vertical unless it says otherwise.
+    public var scrollAxes: PluckScrollAxes = .vertical
+
     /// The pinch under way; nil between pinches.
     public private(set) var press: PluckPress?
     /// Whether the pull's drag has the pinch: it has spoken, and not yet
@@ -215,6 +227,14 @@ public struct PluckPinches: Sendable {
     /// far should its hold not have come: 0 if the drag hasn't spoken by
     /// then. What a trace says of how still a hold was.
     public private(set) var farthestBeforeHold = 0.0
+    /// The farthest of that along the container's scroll.
+    public private(set) var farthestAlongScrollBeforeHold = 0.0
+    /// Where the container's scroll offset stood at the touch of the pinch
+    /// under way, as first read during it; nil until it's read.
+    public private(set) var scrollOffsetAtTouch: SIMD2<Double>?
+    /// The farthest the container's scroll offset has moved from there
+    /// before the hold, in points; nil until it's read.
+    public private(set) var scrollOffsetMovedBeforeHold: Double?
     /// Whether the item's tap came while the pinch was under way.
     private var tapCame = false
     /// Until when the item's tap is still the release of the pinch that
@@ -300,6 +320,7 @@ public struct PluckPinches: Sendable {
             farthest = max(farthest, distance)
             if heldAt == nil {
                 farthestBeforeHold = max(farthestBeforeHold, distance)
+                farthestAlongScrollBeforeHold = max(farthestAlongScrollBeforeHold, scrollAxes.distance(along: translation))
             }
         }
         let (armed, _) = armIfDue(at: now)
@@ -368,6 +389,35 @@ public struct PluckPinches: Sendable {
             }
         }
         return Tap(isRelease: false, sinceTouch: sinceTouch)
+    }
+
+    /// The container's scroll offset is `offset` now, in points, at `now`:
+    /// the first reading of a pinch is where it stood at the touch, which
+    /// the caller gives as the pinch begins; each after it, as the offset
+    /// changes or as the hold's count comes up, is measured from there.
+    /// Before the hold, an offset moved past the tuning's stillness for it
+    /// makes the pinch a scroll, and its hold stops counting, whatever phase
+    /// the scroll view says it's in; one neither gesture has any more is
+    /// over. With no pinch, or past the hold, it changes nothing.
+    public mutating func scrollOffset(_ offset: SIMD2<Double>, at now: ContinuousClock.Instant) -> Told {
+        guard press != nil else { return Told(why: .noPinch) }
+        guard offset.x.isFinite, offset.y.isFinite else { return Told(why: .notANumber) }
+        guard let atTouch = scrollOffsetAtTouch else {
+            scrollOffsetAtTouch = offset
+            scrollOffsetMovedBeforeHold = 0
+            return Told(why: .scrollOffsetWithin(distance: 0, stillness: tuning.scrollOffsetStillness))
+        }
+        let moved = offset - atTouch
+        let distance = (moved * moved).sum().squareRoot()
+        if heldAt == nil {
+            scrollOffsetMovedBeforeHold = max(scrollOffsetMovedBeforeHold ?? 0, distance)
+        }
+        let (actions, why) = tell { $0.scrollOffsetMoved(distance) }
+        guard !actions.isEmpty else { return Told(why: why) }
+        // A scroll: one neither gesture has any more, as the scroll view
+        // took it, is over.
+        let ended = endIfOver(.cancelled, at: now)
+        return Told(actions: actions, why: why, countdowns: ended == nil ? [.stopHold] : Self.stopBoth, ended: ended)
     }
 
     /// The container began to scroll during the pinch, as its scroll view
@@ -445,7 +495,7 @@ public struct PluckPinches: Sendable {
     /// Begins a pinch, unless one is under way.
     private mutating func begin(at now: ContinuousClock.Instant) {
         guard press == nil else { return }
-        press = PluckPress(tuning: tuning)
+        press = PluckPress(tuning: tuning, scrollAxes: scrollAxes)
         began = now
         lastBegan = now
         heldAt = nil
@@ -458,6 +508,9 @@ public struct PluckPinches: Sendable {
         moved = nil
         farthest = 0
         farthestBeforeHold = 0
+        farthestAlongScrollBeforeHold = 0
+        scrollOffsetAtTouch = nil
+        scrollOffsetMovedBeforeHold = nil
         tapCame = false
         // A new pinch's touch comes after the last one's release.
         releaseTapExpectedUntil = nil
@@ -540,6 +593,8 @@ public struct PluckPinches: Sendable {
         let press = self.press ?? PluckPress(tuning: tuning)
         let outcome: Account.Outcome = if press.hasPulled {
             .pull
+        } else if press.stayedDown == .givenBackToTheScroll {
+            .scroll
         } else if press.liftedByHold {
             .lift
         } else if press.hasMoved || press.stayedDown == .containerScrolled {
@@ -564,6 +619,8 @@ public struct PluckPinches: Sendable {
             moved: moved,
             farthest: farthest,
             farthestBeforeHold: farthestBeforeHold,
+            farthestAlongScrollBeforeHold: farthestAlongScrollBeforeHold,
+            scrollOffsetMovedBeforeHold: scrollOffsetMovedBeforeHold,
             farthestStretch: press.farthestStretch,
             breakFreeAt: press.breakFreeAt
         )

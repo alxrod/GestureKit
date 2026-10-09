@@ -55,14 +55,15 @@ import Testing
         #expect(account.armedAfter == .seconds(0.45))
     }
 
-    /// A fresh pinch's settling, 15 pt in its first quarter second, still
-    /// doesn't give the hold up.
+    /// A fresh pinch's settling, as item 2's on the headset, 15 pt in its
+    /// first quarter second, 8.2 of them along the scroll, still doesn't
+    /// give the hold up.
     @Test func aFreshPinchsSettlingStillLifts() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        #expect(moved(&pinches, 4, 15, -2, at: 0.2).actions == [])
+        #expect(moved(&pinches, 12.5, 8.2, -2.5, at: 0.2).actions == [])
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.25)).actions == [.lift])
-        #expect(pinches.press?.liftPoint == SIMD3(4, 15, -2))
+        #expect(pinches.press?.liftPoint == SIMD3(12.5, 8.2, -2.5))
     }
 
     // MARK: Held: the item follows, with resistance
@@ -108,15 +109,15 @@ import Testing
     @Test func theFollowIsMeasuredFromWhereItLifted() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        _ = moved(&pinches, 0, 20, 0, at: 0.2)
+        _ = moved(&pinches, 20, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
-        _ = moved(&pinches, 0, 20.5, 0, at: 0.3)
+        _ = moved(&pinches, 20.5, 0, 0, at: 0.3)
         #expect(pinches.stretch?.reach == 0.5)
-        _ = moved(&pinches, 0, 20, 0, at: 0.35)
+        _ = moved(&pinches, 20, 0, 0, at: 0.35)
         #expect(pinches.follow == .zero)
-        _ = moved(&pinches, 10, 20, 0, at: 0.4)
-        #expect(pinches.follow.y == 0)
-        #expect(pinches.follow.x > 0 && pinches.follow.x < 5)
+        _ = moved(&pinches, 20, 10, 0, at: 0.4)
+        #expect(pinches.follow.x == 0)
+        #expect(pinches.follow.y > 0 && pinches.follow.y < 5)
     }
 
     /// A hand that has pinched and holds still, settling and trembling a few
@@ -143,12 +144,12 @@ import Testing
     @Test func itBreaksFreeAt34PointsFromWhereItLifted() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        _ = moved(&pinches, 0, 12, 0, at: 0.2)
+        _ = moved(&pinches, 12, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = pinches.armPull(at: at(0.45))
-        #expect(moved(&pinches, 0, 45.9, 0, at: 0.6).actions == [])
+        #expect(moved(&pinches, 12, 33.9, 0, at: 0.6).actions == [])
         #expect(pinches.follow.y > 9)
-        let free = moved(&pinches, 0, 46, 0, at: 0.65)
+        let free = moved(&pinches, 12, 34, 0, at: 0.65)
         #expect(free.actions == [.breakFree])
         #expect(free.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 34, threshold: 34, verdict: .pulls, origin: .lift)))
         #expect(pinches.stretch == nil)
@@ -162,10 +163,10 @@ import Testing
         for move in [SIMD3(34.0, 0, 0), SIMD3(-34, 0, 0), SIMD3(0, 34, 0), SIMD3(0, -34, 0), SIMD3(0, 0, 34), SIMD3(0, 0, -34), SIMD3(20, 20, 20)] {
             var pinches = PluckPinches()
             _ = pinches.pressBegan(at: at(0))
-            _ = moved(&pinches, 0, 16, 0, at: 0.2)
+            _ = moved(&pinches, 16, 0, 0, at: 0.2)
             _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
             _ = pinches.armPull(at: at(0.45))
-            let told = pinches.dragMoved(SIMD3(0, 16, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.6))
+            let told = pinches.dragMoved(SIMD3(16, 0, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.6))
             #expect(told.actions == [.breakFree], "moved \(move)")
         }
     }
@@ -206,7 +207,7 @@ import Testing
     /// hold half a second, the item following nothing, and 8.2 pt from where
     /// it lifted breaking it free.
     @Test func theOldBehaviorIsATuningAway() {
-        var pinches = PluckPinches(tuning: .notSticky)
+        var pinches = PluckPinches(tuning: .loose)
         #expect(pinches.pressBegan(at: at(0)).countdowns == [.stopArming, .startHold(.seconds(0.5))])
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))

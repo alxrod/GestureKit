@@ -8,9 +8,12 @@
 /// keeps the tuning it began with, so each pinch in a trace is judged by one
 /// tuning.
 ///
-/// The defaults: a pinch its container scrolls with, or that moves 40 pt
-/// before its hold, is the container's scroll; held still a quarter second,
-/// the item lifts and the container's scroll stops under it; lifted, it
+/// The defaults: a pinch is the container's scroll unless it's a hold. One
+/// its container's scroll view scrolls with, or whose scroll offset moves
+/// a point from where it stood at the touch, or that moves 10 pt along the
+/// scroll, or 40 pt any way, before its hold, is the container's scroll,
+/// for good; held a quarter second with none of those, the item lifts and
+/// the container's scroll stops under it; lifted, it
 /// stays in its container, following the hand a little, half of its move at
 /// first and less as it goes on, toward 20 pt, so it feels held; and once
 /// the hand has gone 2.5 cm any way from where it stood as the item lifted,
@@ -24,7 +27,11 @@
 /// one the pluck first shipped with, are each a few values away: a hold of
 /// 0.5 s, a break-free distance of 6 mm, and a follow share of 0; and, as
 /// first shipped, 2 cm toward the viewer from the touch, at a stillness of
-/// 15 pt, with the press's end settling a lift.
+/// 15 pt, with the press's end settling a lift. The hold watched only the
+/// scroll view's phase and a move of 40 pt any way until Alex found, after
+/// the quarter second, that pinches meant to scroll still lifted their item
+/// and lost the scroll; that's two values away: an along-scroll stillness of
+/// 40 pt, and the scroll offset unwatched.
 ///
 /// Distances on the item are in its own points, as a SwiftUI drag reports
 /// them, with +z toward the viewer; the break-free distance is in meters of
@@ -36,25 +43,31 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// Alex asked on October 9, the half second having felt too long.
     ///
     /// The pull's arming counts from the lift, so it comes as much sooner,
-    /// 0.45 s after the touch rather than 0.7 s. The container's scroll and
-    /// the hold's stillness give the hold up as before, but have half as long
-    /// to: a scroll that begins with a pause longer than this lifts the item
-    /// it began on, which holds the scroll off, and comes back down with
-    /// nothing spawned should the hand let go short of the break-free
-    /// distance. Longer keeps such a scroll from lifting anything.
+    /// 0.45 s after the touch rather than 0.7 s. The container's scroll, its
+    /// offset, and the hold's stillness give the hold up as before, but have
+    /// half as long to: a pinch that moves less than the drag's 15 pt start
+    /// in its first quarter second, then scrolls, lifts the item it began
+    /// on, which holds the scroll off. Longer keeps such a scroll from
+    /// lifting anything; so may a drag that starts sooner
+    /// (`dragStartDistance`), which hears a smaller move along the scroll,
+    /// or giving the lifted pinch back to the scroll
+    /// (`givesLiftBackToScroll`).
     public var holdDuration: Double
 
-    /// How far a pinch may move from where it touched, in the item's points,
-    /// and still be held: a move the drag reports before the hold, this far
-    /// or farther, makes the pinch the container's scroll for good. 40 pt,
-    /// about 3 cm at a window's own size.
+    /// How far a pinch may move from where it touched, any way, in the
+    /// item's points, and still be held: a move the drag reports before the
+    /// hold, this far or farther, makes the pinch the container's scroll for
+    /// good. 40 pt, about 3 cm at a window's own size. It's the allowance
+    /// across the scroll and in depth; along the scroll, the hold watches
+    /// far more closely (`holdStillnessAlongScroll`).
     ///
     /// The container's scroll gives the hold up anyway, as its scroll view
-    /// says it moves with the pinch or coasts (`PluckScrolls`), so this
-    /// need only catch a big move the scroll view doesn't take, as a yank
-    /// toward the viewer before the hold. On the headset a hand that has
-    /// just pinched settles about 15 pt in its first quarter second, with
-    /// the container still; 40 pt leaves well over twice that.
+    /// says it moves with the pinch or coasts, or its offset moves
+    /// (`PluckScrolls`, `scrollOffsetStillness`), so this need only catch a
+    /// big move the scroll view doesn't take, as a yank toward the viewer
+    /// before the hold. On the headset a hand that has just pinched settles
+    /// about 15 pt in its first quarter second, with the container still;
+    /// 40 pt leaves well over twice that.
     ///
     /// The drag says nothing until the pinch has moved `dragStartDistance`,
     /// by its own measure, so a stillness no greater than that takes the
@@ -62,6 +75,39 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// the pluck first shipped, at 15 pt, which turned the settling of a
     /// fresh pinch into a scroll the container never made.
     public var holdStillness: Double
+
+    /// How far a pinch may move along its container's scroll, in the item's
+    /// points, and still be held: 10 pt, about 7 mm at a window's own size,
+    /// a move the drag reports before the hold this far along the scroll
+    /// making the pinch the container's scroll for good. A move along the
+    /// scroll is what a scroll is, so this is about where a scroll view's
+    /// own pan begins, rather than the 40 pt the hold allows any way, which
+    /// let a slow scroll's first 40 pt go by before its scroll view said it
+    /// scrolled, its item lifting and the scroll lost under it, as Alex found
+    /// on October 9. The one fresh pinch's settling the headset traced went
+    /// 8.2 pt along the scroll and 12.5 across (item 2), which this lets by.
+    ///
+    /// The drag says nothing before its 15 pt start, so a pinch whose first
+    /// word lies two thirds along the scroll is a scroll as it speaks. At
+    /// `holdStillness` or more it changes nothing, the hold watching moves
+    /// along the scroll as it watches any other, as it did until October 9.
+    public var holdStillnessAlongScroll: Double
+
+    /// Whether the hold watches its container's scroll offset as well as its
+    /// scroll view's phase: on by default, so any move of the container's
+    /// content past `scrollOffsetStillness` from where it stood at the
+    /// touch, before the hold, makes the pinch the container's scroll for
+    /// good, whatever phase the scroll view says it's in. The phase may come
+    /// later than the content moves, and sits in tracking from the touch,
+    /// moving or not, so it isn't counted as scrolling: Vignette's grid logs
+    /// a still pinch going from idle to tracking, 0 pt down.
+    public var holdWatchesScrollOffset: Bool
+
+    /// How far the container's scroll offset may move from where it stood
+    /// at a pinch's touch, before the hold, in points, and the item still
+    /// lift: 1 pt. Content at rest doesn't move, and a scroll moves it some
+    /// points a frame; a point leaves room for a layout's rounding.
+    public var scrollOffsetStillness: Double
 
     /// How long after its item lifts a pinch's pull arms, in seconds: two
     /// tenths, the least time the item shows lifted before it may break
@@ -179,6 +225,20 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// and only a move toward the viewer, which a scroll ignores, pulls it.
     public var stopsScrollUnderLiftedItem: Bool
 
+    /// Whether a lifted item held short of breaking free gives its pinch
+    /// back to the container's scroll as the hand moves mostly along it:
+    /// off by default. On, a move from where the item lifted at least
+    /// `holdStillnessAlongScroll` along the scroll, and twice as far along
+    /// it as across it and in depth, settles the item, which turns the
+    /// container's scroll on again, and makes the pinch a scroll for the
+    /// rest of it, so a scroll begun after a pause as long as the hold
+    /// doesn't pull a card out instead. Whether the scroll view then takes
+    /// up the pinch already under way, its scroll having been off as it
+    /// began, only the headset can tell: if it doesn't, the pinch does
+    /// nothing until it's let go. And an item can no longer be pulled out
+    /// mostly along the scroll.
+    public var givesLiftBackToScroll: Bool
+
     /// Whether the container beginning to scroll settles a lifted item: on
     /// by default, so an item lifted as its container began to scroll, by
     /// another hand or a scroll under way, goes back down.
@@ -234,6 +294,9 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public init(
         holdDuration: Double = 0.25,
         holdStillness: Double = 40,
+        holdStillnessAlongScroll: Double = 10,
+        holdWatchesScrollOffset: Bool = true,
+        scrollOffsetStillness: Double = 1,
         pullArmDelay: Double = 0.2,
         dragStartDistance: Double = 15,
         breakFreeDistance: Double = 0.025,
@@ -246,6 +309,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         depthGrowsTowardViewer: Bool = true,
         depthScale: Double = 1,
         stopsScrollUnderLiftedItem: Bool = true,
+        givesLiftBackToScroll: Bool = false,
         scrollSettlesLiftedItem: Bool = true,
         pressEndSettlesLiftedItem: Bool = false,
         releaseTapGrace: Double = 1,
@@ -257,6 +321,9 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     ) {
         self.holdDuration = holdDuration
         self.holdStillness = holdStillness
+        self.holdStillnessAlongScroll = holdStillnessAlongScroll
+        self.holdWatchesScrollOffset = holdWatchesScrollOffset
+        self.scrollOffsetStillness = scrollOffsetStillness
         self.pullArmDelay = pullArmDelay
         self.dragStartDistance = dragStartDistance
         self.breakFreeDistance = breakFreeDistance
@@ -269,6 +336,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.depthGrowsTowardViewer = depthGrowsTowardViewer
         self.depthScale = depthScale
         self.stopsScrollUnderLiftedItem = stopsScrollUnderLiftedItem
+        self.givesLiftBackToScroll = givesLiftBackToScroll
         self.scrollSettlesLiftedItem = scrollSettlesLiftedItem
         self.pressEndSettlesLiftedItem = pressEndSettlesLiftedItem
         self.releaseTapGrace = releaseTapGrace
@@ -331,6 +399,31 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         holdStillness <= dragStartDistance || distance >= holdStillness
     }
 
+    /// Whether a move the drag reports `distance` along the container's
+    /// scroll from where the pinch touched, in the item's points, breaks the
+    /// hold's stillness along it: once it reaches `holdStillnessAlongScroll`.
+    public func breaksStillnessAlongScroll(_ distance: Double) -> Bool {
+        distance.isFinite && distance >= holdStillnessAlongScroll
+    }
+
+    /// Whether the container's scroll offset, `distance` points from where
+    /// it stood at the pinch's touch, gives the hold up: with the offset
+    /// watched, once it's past `scrollOffsetStillness`.
+    public func scrollOffsetGivesUpHold(_ distance: Double) -> Bool {
+        holdWatchesScrollOffset && distance.isFinite && distance > scrollOffsetStillness
+    }
+
+    /// Whether a lifted pinch's `move` from where its item lifted, in the
+    /// item's points, gives it back to the container's scroll along `axes`:
+    /// with the tuning giving it back, at least `holdStillnessAlongScroll`
+    /// along the scroll, and twice as far along it as across it and in
+    /// depth.
+    public func givesBackToScroll(_ move: SIMD3<Double>, along axes: PluckScrollAxes) -> Bool {
+        guard givesLiftBackToScroll else { return false }
+        let along = axes.distance(along: move)
+        return along >= holdStillnessAlongScroll && along >= 2 * axes.distance(across: move)
+    }
+
     /// The drag's `translation` as the pull rule reads it: its depth turned
     /// toward the viewer, should the tuning say it runs away, and scaled by
     /// `depthScale`; its moves across as they are.
@@ -370,7 +463,10 @@ extension PluckTuning: Tunable {
 
     public static let parameters: [TuningParameter<PluckTuning>] = [
         .number(\.holdDuration, key: "holdDuration", title: "Hold before the lift", unit: "s", range: 0.1...2, step: 0.05),
-        .number(\.holdStillness, key: "holdStillness", title: "Hold stillness", unit: "pt", range: 0...100, step: 1),
+        .number(\.holdStillness, key: "holdStillness", title: "Hold stillness, any way", unit: "pt", range: 0...100, step: 1),
+        .number(\.holdStillnessAlongScroll, key: "holdStillnessAlongScroll", title: "Hold stillness along the scroll", unit: "pt", range: 0...100, step: 1),
+        .toggle(\.holdWatchesScrollOffset, key: "holdWatchesScrollOffset", title: "Hold watches the scroll offset"),
+        .number(\.scrollOffsetStillness, key: "scrollOffsetStillness", title: "Scroll offset may move", unit: "pt", range: 0...20, step: 0.5),
         .number(\.pullArmDelay, key: "pullArmDelay", title: "Pull arms after the lift", unit: "s", range: 0...1, step: 0.05),
         .number(\.dragStartDistance, key: "dragStartDistance", title: "Drag start", unit: "pt", range: 0...60, step: 1),
         .number(\.breakFreeDistance, key: "breakFreeDistance", title: "Break free after", unit: "m", range: 0.002...0.1, step: 0.001),
@@ -383,6 +479,7 @@ extension PluckTuning: Tunable {
         .toggle(\.depthGrowsTowardViewer, key: "depthGrowsTowardViewer", title: "Drag's z grows toward you"),
         .number(\.depthScale, key: "depthScale", title: "Drag's depth scale", range: 0.25...4, step: 0.05),
         .toggle(\.stopsScrollUnderLiftedItem, key: "stopsScrollUnderLiftedItem", title: "Scroll stops under a lifted item"),
+        .toggle(\.givesLiftBackToScroll, key: "givesLiftBackToScroll", title: "A held item gives a move along the scroll back to it"),
         .toggle(\.scrollSettlesLiftedItem, key: "scrollSettlesLiftedItem", title: "A scroll settles a lifted item"),
         .toggle(\.pressEndSettlesLiftedItem, key: "pressEndSettlesLiftedItem", title: "The press's end settles a lifted item"),
         .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),

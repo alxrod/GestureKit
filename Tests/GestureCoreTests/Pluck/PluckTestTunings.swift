@@ -17,13 +17,18 @@ extension PluckTuning {
         pressEndSettlesLiftedItem: true
     )
 
-    /// The pluck as Alex tried it in the lab on October 9: a hold of half a
-    /// second, and a pull of 6 mm any way from where the pinch stood as its
-    /// item lifted, the lifted item following nothing, the rest at today's
-    /// defaults. Its item spawned the instant it lifted; it's three values
-    /// away, as the headset's trace replays prove.
-    static let notSticky = PluckTuning(
+    /// The pluck as Alex tried it in the lab on October 9, loose both ways: a
+    /// hold of half a second, given up by its scroll view's phase or a move
+    /// of 40 pt any way, along the scroll or not, its scroll offset
+    /// unwatched; and a pull of 6 mm any way from where the pinch stood as
+    /// its item lifted, the lifted item following nothing; the rest at
+    /// today's defaults. Its item spawned the instant it lifted, and slow
+    /// scrolls lifted their items; it's five values away, as the headset's
+    /// trace replays prove.
+    static let loose = PluckTuning(
         holdDuration: 0.5,
+        holdStillnessAlongScroll: 40,
+        holdWatchesScrollOffset: false,
         breakFreeDistance: 0.006,
         followShare: 0
     )

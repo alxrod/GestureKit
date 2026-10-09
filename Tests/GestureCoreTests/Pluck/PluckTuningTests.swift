@@ -92,11 +92,14 @@ import Testing
     }
 
     /// The pluck as Alex tried it on October 9, which spawned its item the
-    /// instant it lifted, is three values away: a half-second hold, a 6 mm
-    /// pull, and no follow.
-    @Test func theNotStickyTuning() {
-        let tuning = PluckTuning.notSticky
-        #expect(tuning.tunedValues.keys.sorted() == ["breakFreeDistance", "followShare", "holdDuration"])
+    /// instant it lifted, and lifted items under slow scrolls, is five values
+    /// away: a half-second hold, its stillness along the scroll the same as
+    /// any way's, its scroll offset unwatched, a 6 mm pull, and no follow.
+    @Test func theLooseTuning() {
+        let tuning = PluckTuning.loose
+        #expect(tuning.tunedValues.keys.sorted() == [
+            "breakFreeDistance", "followShare", "holdDuration", "holdStillnessAlongScroll", "holdWatchesScrollOffset",
+        ])
         #expect(tuning.holdTime == .seconds(0.5))
         #expect(abs(tuning.breakFreeThreshold(pointsPerMeter: 1360) - 8.16) < 1e-9)
         #expect(!tuning.tether.follows)
@@ -111,10 +114,11 @@ import Testing
             String(line.trimmingCharacters(in: .whitespaces).prefix { $0 != ":" })
         }
         #expect(labels == [
-            "holdDuration", "holdStillness", "pullArmDelay", "dragStartDistance", "breakFreeDistance",
+            "holdDuration", "holdStillness", "holdStillnessAlongScroll", "holdWatchesScrollOffset",
+            "scrollOffsetStillness", "pullArmDelay", "dragStartDistance", "breakFreeDistance",
             "followShare", "followCap", "pullDepthPerDrift", "pullsAnyDirection", "measuresPullFromLift", "measuresPullFromArming",
             "depthGrowsTowardViewer", "depthScale",
-            "stopsScrollUnderLiftedItem", "scrollSettlesLiftedItem", "pressEndSettlesLiftedItem",
+            "stopsScrollUnderLiftedItem", "givesLiftBackToScroll", "scrollSettlesLiftedItem", "pressEndSettlesLiftedItem",
             "releaseTapGrace", "holdsFromTheDrag", "pullDragIsSimultaneous", "pushTowardViewer",
             "liftScale", "liftDepth",
         ])
@@ -123,10 +127,11 @@ import Testing
     /// A tuning with every value changed is saved and loaded whole.
     @Test func everyValueIsSavedAndLoaded() {
         let tuned = PluckTuning(
-            holdDuration: 0.8, holdStillness: 8, pullArmDelay: 0.3, dragStartDistance: 0, breakFreeDistance: 0.03,
+            holdDuration: 0.8, holdStillness: 8, holdStillnessAlongScroll: 4, holdWatchesScrollOffset: false,
+            scrollOffsetStillness: 3, pullArmDelay: 0.3, dragStartDistance: 0, breakFreeDistance: 0.03,
             followShare: 0.3, followCap: 12, pullDepthPerDrift: 0, pullsAnyDirection: false, measuresPullFromLift: false, measuresPullFromArming: true,
             depthGrowsTowardViewer: false, depthScale: 2,
-            stopsScrollUnderLiftedItem: false, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
+            stopsScrollUnderLiftedItem: false, givesLiftBackToScroll: true, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
             releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false, pushTowardViewer: 60,
             liftScale: 1.12, liftDepth: 48
         )
@@ -174,8 +179,8 @@ import Testing
     }
 
     /// A stillness looser than the drag's start lets the drag's first words
-    /// go by: the hold goes on, and lifts, and a pinch that moved only that
-    /// much and was let go is a tap, not a scroll.
+    /// go by, across the scroll: the hold goes on, and lifts, and a pinch
+    /// that moved only that much and was let go is a tap, not a scroll.
     @Test func aLooserStillnessLetsTheDragsFirstWordsGoBy() throws {
         let tuning = PluckTuning(holdStillness: 30, dragStartDistance: 15)
         #expect(!tuning.breaksStillness(29.9))
@@ -183,12 +188,12 @@ import Testing
 
         var held = PluckPinches(tuning: tuning)
         _ = held.pressBegan(at: at(0))
-        #expect(moved(&held, 0, 20, 0, at: 0.2) == PluckPinches.Told(why: .withinStillness(distance: 20, stillness: 30)))
+        #expect(moved(&held, 20, 0, 0, at: 0.2) == PluckPinches.Told(why: .withinStillness(distance: 20, stillness: 30)))
         #expect(held.holdFired(asTheContainerScrolled: false, at: at(0.5)).actions == [.lift])
 
         var tapped = PluckPinches(tuning: tuning)
         _ = tapped.pressBegan(at: at(0))
-        _ = moved(&tapped, 0, 20, 0, at: 0.2)
+        _ = moved(&tapped, 20, 0, 0, at: 0.2)
         #expect(tapped.dragEnded(at: at(0.3)).ended == nil)
         #expect(tapped.pressEnded(at: at(0.3)).ended == nil)
         let account = try #require(tapped.tapped(at: at(0.3)).ended)
@@ -197,8 +202,8 @@ import Testing
 
         var scrolled = PluckPinches(tuning: tuning)
         _ = scrolled.pressBegan(at: at(0))
-        _ = moved(&scrolled, 0, 20, 0, at: 0.2)
-        #expect(moved(&scrolled, 0, 30, 0, at: 0.3) == PluckPinches.Told(actions: [.stayDown(.movedFirst)], why: .movedFirst(distance: 30, stillness: 30), countdowns: [.stopHold]))
+        _ = moved(&scrolled, 20, 0, 0, at: 0.2)
+        #expect(moved(&scrolled, 30, 0, 0, at: 0.3) == PluckPinches.Told(actions: [.stayDown(.movedFirst)], why: .movedFirst(distance: 30, stillness: 30), countdowns: [.stopHold]))
     }
 
     /// A drag that starts at 0 pt hears the pinch from its touch: its first
