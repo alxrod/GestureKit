@@ -37,9 +37,16 @@ public final class TuningStore<Tuning: Tunable> {
         tuning = Self.load(from: defaults, key: "\(namespace).tuning")
     }
 
-    /// Sets `parameter` to `value`, fitted to its range and step.
+    /// Sets `parameter` to `value`, fitted to its range and step. A value the
+    /// tuning has already changes nothing, and tells no one: each set of
+    /// `tuning` draws again whatever reads it, the station's views and the
+    /// panel, whether its value changed or not, and a slider dragged within
+    /// one step sets the value it has.
     public func set(_ value: TuningValue, for parameter: TuningParameter<Tuning>) {
-        parameter.set(value, in: &tuning)
+        var changed = tuning
+        parameter.set(value, in: &changed)
+        guard changed != tuning else { return }
+        tuning = changed
     }
 
     /// `parameter`'s value as the tuning stands.
