@@ -1,5 +1,5 @@
 /// How something held still lifts as its press picks it up, and on toward its
-/// hold, as a tile lifts off its grid as it's held: it scales up a little
+/// hold, as an item lifts off its grid as it's held: it scales up a little
 /// about its middle and comes toward the viewer, out of the plane it stood
 /// in. Nothing until the pinch picks up (`SurfacePress.Tuning.pickUpDelay`),
 /// so a tap or a drag never shows it; then it pops up to `pickedUpShare` of
@@ -28,7 +28,7 @@ public enum HoldLift {
         /// which overshoots by about a tenth.
         public var popOvershoot: Double
         /// How much larger it shows lifted all the way, about its middle: 6%,
-        /// a little less than a grid tile's 8%, as a surface can be a meter
+        /// a little less than a grid item's 8%, as a surface can be a meter
         /// wide, so a meter's grows 3 cm either way.
         public var fullScale: Double
         /// How far toward the viewer it stands lifted all the way, in meters:

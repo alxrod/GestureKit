@@ -161,7 +161,7 @@ import Testing
     /// come to rest there: from the same speed, so nothing jolts as the hand
     /// lets go, decaying faster, its distance exactly the room, which it
     /// never passes, its speed down to a centimeter a second as it arrives.
-    /// A hard clip would carry it to the end at speed and stop it dead.
+    /// Stopping it hard would carry it to the end at speed and stop it dead.
     @Test func aCoastAnEndCutsShortComesToRestThereFromTheSameSpeed() throws {
         let coast = try #require(Coast(releasedAt: 1))
         let cut = try #require(coast.limited(toRoom: 0.1))

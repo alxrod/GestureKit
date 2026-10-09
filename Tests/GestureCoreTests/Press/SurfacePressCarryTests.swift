@@ -196,7 +196,7 @@ private func sample(_ x: Double, moved: SIMD3<Double>, hand: SIMD3<Double>? = ni
     }
 
     /// What's picked up and let go, or cancelled, short of a carry, is put
-    /// down where it was, and no tap, still or moved, as a grid tile let go
+    /// down where it was, and no tap, still or moved, as a grid item let go
     /// once it lifted is no tap; one that caught a coast too.
     @Test func whatsPickedUpAndLetGoIsPutDownWithNoTap() {
         var still = SurfacePress(at: 0.2, canHold: false)

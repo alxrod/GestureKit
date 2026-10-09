@@ -3,7 +3,7 @@ import Testing
 @testable import GestureCore
 
 /// How something held still lifts as its press picks it up, and on toward
-/// its hold, as a tile lifts off its grid.
+/// its hold, as an item lifts off its grid.
 @Suite struct HoldLiftTests {
     private let press = SurfacePress.Tuning()
     private let lift = HoldLift.Tuning()
