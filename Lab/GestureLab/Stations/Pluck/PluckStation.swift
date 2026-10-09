@@ -159,7 +159,6 @@ private struct PluckLabWindow: View {
                 }
             }
             .frame(height: 560)
-            .clipShape(.rect(cornerRadius: 16))
             .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
             .id(station.spaceAppearances)
         }
