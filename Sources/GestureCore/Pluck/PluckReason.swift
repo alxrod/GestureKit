@@ -56,19 +56,22 @@ public enum PluckReason: Equatable, Sendable {
     /// A move of a pinch told as the container's scroll, which lifts and
     /// pulls nothing.
     case scrolling(PluckPress.StayDown)
-    /// A move of a lifted pinch whose pull hasn't armed: nothing.
+    /// A move of a lifted pinch whose pull hasn't armed: the item follows on
+    /// its tether, and breaks nothing free.
     case notArmedYet
     /// A word for a lifted item, the arming or a move, while the pinch's
     /// item isn't lifted: never lifted, or settled already, as when its
     /// press ended before its drag spoke. Nothing.
     case notLifted
-    /// An armed move the pull rule turned down.
+    /// An armed move the pull rule turned down: the item stays held,
+    /// following on its tether.
     case notAPull(PluckPullJudgement)
-    /// An armed move the pull rule took: the pull begins.
-    case pulled(PluckPullJudgement)
-    /// The pull moves with its drag.
-    case pullMoved
-    /// A move after the pinch's pull landed: one pinch pulls once.
+    /// An armed move the pull rule took: the item breaks free and spawns.
+    case brokeFree(PluckPullJudgement)
+    /// A move after the spawn, handed to the carry of what spawned.
+    case handedToTheCarry
+    /// A move after the pinch let go of what spawned: one pinch breaks free
+    /// once.
     case pulledAlready
 
     // MARK: The pinch's end
@@ -121,8 +124,8 @@ extension PluckReason: CustomStringConvertible {
         case .notArmedYet: "notArmedYet"
         case .notLifted: "notLifted"
         case .notAPull(let judgement): "notAPull.\(judgement.verdict.rawValue)"
-        case .pulled: "pulled"
-        case .pullMoved: "pullMoved"
+        case .brokeFree: "brokeFree"
+        case .handedToTheCarry: "handedToTheCarry"
         case .pulledAlready: "pulledAlready"
         case .dragEnded: "dragEnded"
         case .dragCancelled: "dragCancelled"
@@ -154,12 +157,12 @@ extension PluckReason: CustomStringConvertible {
         case .withinStillness(let distance, let stillness):
             "\(pluckPoints(distance)) from the touch, within the hold's \(pluckPoints(stillness)) stillness"
         case .scrolling(let why): "a scroll (\(why == .movedFirst ? "moved first" : "the container scrolled"))"
-        case .notArmedYet: "lifted, the pull not armed yet"
+        case .notArmedYet: "held, the pull not armed yet"
         case .notLifted: "the item isn't lifted"
-        case .notAPull(let judgement): "no pull: \(judgement)"
-        case .pulled(let judgement): "pull: \(judgement)"
-        case .pullMoved: "the pull moved"
-        case .pulledAlready: "pulled already"
+        case .notAPull(let judgement): "held: \(judgement)"
+        case .brokeFree(let judgement): "broke free: \(judgement)"
+        case .handedToTheCarry: "carried"
+        case .pulledAlready: "broke free already"
         case .dragEnded: "the drag ended"
         case .dragCancelled: "the drag was cancelled"
         case .pressEnded: "the press ended"
@@ -175,12 +178,13 @@ extension PluckReason: CustomStringConvertible {
 
 extension PluckPullJudgement: CustomStringConvertible {
     /// The judgement in a few words, the move measured from where it was:
-    /// "too short, 5.5 pt from where it armed (5.3 deep, 1.6 across), needs
-    /// 8.2 pt", or "too slanted, 124.0 pt from the touch (30.0 deep, 120.0
-    /// across), needs 27.0 pt".
+    /// "too short, 12.0 pt from where it lifted (5.3 deep, 10.8 across),
+    /// needs 34.0 pt", "far enough, 35.1 pt from where it lifted …", or
+    /// "too slanted, 124.0 pt from the touch (30.0 deep, 120.0 across),
+    /// needs 27.0 pt".
     public var description: String {
         let verdict = switch verdict {
-        case .pulls: "pulls"
+        case .pulls: "far enough"
         case .tooShallow: "too shallow"
         case .tooSlanted: "too slanted"
         case .tooShort: "too short"

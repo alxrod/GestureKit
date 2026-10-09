@@ -1,34 +1,47 @@
 /// The numbers and choices a pluck goes by: how long and how still a pinch
 /// on an item in a scrolling container is held before the item lifts, how
-/// long after the lift its pull arms, which moves pull it out, what the
+/// the lifted item follows the hand until it breaks free, how far the hand
+/// goes before it does, how long after the lift it may, what the
 /// container's scroll does meanwhile, and, for the visionOS adapter, how its
-/// gestures attach and how the lift and the pull look. Every rule reads them
-/// from here, so the lab can change them live; a pinch keeps the tuning it
-/// began with, so each pinch in a trace is judged by one tuning.
+/// gestures attach, how the lift looks, and where what breaks free spawns.
+/// Every rule reads them from here, so the lab can change them live; a pinch
+/// keeps the tuning it began with, so each pinch in a trace is judged by one
+/// tuning.
 ///
 /// The defaults: a pinch its container scrolls with, or that moves 40 pt
-/// before its hold, is the container's scroll; held still half a second,
-/// the item lifts and the container's scroll stops under it; two tenths of
-/// a second later its pull arms, and a move of 6 mm any way from where the
-/// pinch stood as the item lifted pulls it out. They're the numbers the
-/// pluck first shipped with but five, which the lab's traces on the headset
-/// showed almost never pulled and often lost the hold: the drag's first
-/// word, at its 15 pt start, no longer makes the pinch a scroll
-/// (`holdStillness`); a pull needs no depth (`pullsAnyDirection`), counts
-/// only the move since the lift (`measuresPullFromLift`), and is under a
-/// third as far (`pullDistance`); and a lifted item stays up as the hold's
-/// press ends while the drag hasn't spoken, since stopping the container's
-/// scroll as the item lifts may cancel the press
-/// (`pressEndSettlesLiftedItem`).
+/// before its hold, is the container's scroll; held still a quarter second,
+/// the item lifts and the container's scroll stops under it; lifted, it
+/// stays in its container, following the hand a little, half of its move at
+/// first and less as it goes on, toward 20 pt, so it feels held; and once
+/// the hand has gone 2.5 cm any way from where it stood as the item lifted,
+/// and two tenths of a second have passed since the lift, the item breaks
+/// free and spawns into the room at the hand, where the pluck's part ends
+/// and a carry's begins (`PluckHandoff`).
+///
+/// Alex asked for the quarter second and the sticky lift on October 9, after
+/// trying the lab: the half-second hold felt too long, and at the 6 mm pull
+/// it had then, the item spawned the instant it lifted. That tuning, and the
+/// one the pluck first shipped with, are each a few values away: a hold of
+/// 0.5 s, a break-free distance of 6 mm, and a follow share of 0; and, as
+/// first shipped, 2 cm toward the viewer from the touch, at a stillness of
+/// 15 pt, with the press's end settling a lift.
 ///
 /// Distances on the item are in its own points, as a SwiftUI drag reports
-/// them, with +z toward the viewer; the pull's distance is in meters, which
-/// the caller converts by the points it measures to a meter, about 1,360 at
-/// a window's own size.
+/// them, with +z toward the viewer; the break-free distance is in meters of
+/// the hand's move, which the caller converts by the points it measures to
+/// a meter of it, about 1,360 at a window's own size.
 public struct PluckTuning: Equatable, Sendable, Codable {
-    /// How long a pinch is held, in seconds, before its item lifts: half a
-    /// second. Longer keeps a scroll that begins with a pause from lifting
-    /// the item it began on.
+    /// How long a pinch is held, in seconds, before its item lifts: a
+    /// quarter second, half the half second the pluck first shipped with, as
+    /// Alex asked on October 9, the half second having felt too long.
+    ///
+    /// The pull's arming counts from the lift, so it comes as much sooner,
+    /// 0.45 s after the touch rather than 0.7 s. The container's scroll and
+    /// the hold's stillness give the hold up as before, but have half as long
+    /// to: a scroll that begins with a pause longer than this lifts the item
+    /// it began on, which holds the scroll off, and comes back down with
+    /// nothing spawned should the hand let go short of the break-free
+    /// distance. Longer keeps such a scroll from lifting anything.
     public var holdDuration: Double
 
     /// How far a pinch may move from where it touched, in the item's points,
@@ -51,8 +64,18 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public var holdStillness: Double
 
     /// How long after its item lifts a pinch's pull arms, in seconds: two
-    /// tenths, so the lift shows before anything can come out. Between the
-    /// lift and the arming, a move neither pulls nor scrolls.
+    /// tenths, the least time the item shows lifted before it may break
+    /// free. Between the lift and the arming, a move neither breaks it free
+    /// nor scrolls, though the item follows it, and the move counts from the
+    /// lift, so a hand already past the break-free distance breaks it free
+    /// at its first word after the arming.
+    ///
+    /// With the break-free distance doing the work of keeping the item in
+    /// its container, this is a floor rather than the guard it was at 6 mm:
+    /// about a person's reaction time and most of the lift's 0.32 s spring,
+    /// so even a hand already moving as the item lifts sees it lift and hold
+    /// before it comes free. A hand pulling on purpose takes about that long
+    /// to go 2.5 cm, so it seldom waits for it. 0 arms at the lift.
     public var pullArmDelay: Double
 
     /// How far a pinch moves from where it touched, in the item's points,
@@ -62,27 +85,53 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// with the container's scroll for it.
     public var dragStartDistance: Double
 
-    /// How far an armed pinch moves to pull its item out, in meters: 6 mm,
-    /// about 8 pt at a window's own size, any way from where the pinch stood
-    /// as its item lifted, by default. The pull rule reads it in the item's
-    /// points (`pullThreshold(pointsPerMeter:)`).
+    /// How far a lifted pinch moves before its item breaks free and spawns
+    /// into the room, in meters of the hand's move: 2.5 cm, 34 pt at a
+    /// window's own size, any way from where the pinch stood as its item
+    /// lifted, by default (`pullRule`, `pullOrigin`). Until then the item
+    /// stays lifted in its container, following the hand on its tether
+    /// (`followShare`, `followCap`), so the lifted state feels sticky. The
+    /// pull rule reads it in the item's points
+    /// (`breakFreeThreshold(pointsPerMeter:)`), which the adapter measures
+    /// for a meter of the hand.
     ///
-    /// On the headset the drag reports depth in steps of about 4 pt, so one
-    /// step alone never pulls, and two do; a hand trying to hold still moved
-    /// a point or two between the drag's words; and a hand meaning to pull
-    /// moved 15 pt or more within a few tenths of a second of the lift. The
-    /// pluck first shipped at 2 cm toward the viewer, from the touch, which,
-    /// with depth that coarse, almost never pulled.
-    public var pullDistance: Double
+    /// It replaces the 6 mm pull of October 9's lab, which a hand passed in
+    /// a blink, so the item spawned the instant it lifted. 2.5 cm is over
+    /// twice the 15 pt, 1.1 cm, a fresh pinch settles, and a hand trying to
+    /// hold still moved a point or two between the drag's words, so a still
+    /// hand never breaks free; and a hand meaning to pull, which moved 15 pt
+    /// within a few tenths of a second of the lift on the headset, covers it
+    /// in about a third of a second, long enough to feel the item hold. The
+    /// drag reports depth in steps of about 4 pt, so a pull straight out
+    /// takes eight or nine of them. The pluck first shipped at 2 cm toward
+    /// the viewer, from the touch, which, with depth that coarse, almost
+    /// never pulled.
+    public var breakFreeDistance: Double
 
-    /// How deep a pull must go for each unit it drifts across the
-    /// container's plane, with `pullsAnyDirection` off: 0.5, 1 deep for
+    /// How much of the hand's move a lifted item follows at first, short of
+    /// breaking free: half. Its follow eases toward `followCap` as the hand
+    /// goes on (`PluckTether`), as a scroll view's content follows a pinch
+    /// past its end, so the item feels held to its place, and the farther
+    /// the hand goes, the harder it pulls. 0 follows nothing, as the pluck
+    /// did until October 9.
+    public var followShare: Double
+
+    /// How far a lifted item follows at most, in its points: 20 pt, about
+    /// 1.5 cm at a window's own size, which its follow eases toward and never
+    /// reaches. At the default break-free distance it has followed 9 pt, a
+    /// quarter of the hand's 34 pt, as it breaks free, the hand's last
+    /// centimeter moving it hardly at all, which is the tension a rubber band
+    /// has just before it lets go. 0 follows nothing.
+    public var followCap: Double
+
+    /// How deep a pull must go to break free for each unit it drifts across
+    /// the container's plane, with `pullsAnyDirection` off: 0.5, 1 deep for
     /// every 2 across, as the pluck first shipped, so a move must leave the
     /// plane at about 27° or more. At 0, any move far enough toward the
     /// viewer pulls, however far it drifts across.
     public var pullDepthPerDrift: Double
 
-    /// Whether any move as far as the pull's distance pulls, across or in
+    /// Whether any move as far as the break-free distance pulls, across or in
     /// depth, toward the viewer or away, the depth per drift aside: on by
     /// default. A lifted item's container no longer scrolls under it, so no
     /// move of its pinch can be a scroll, and the drag's depth comes through
@@ -100,9 +149,8 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// catches up as the pull arms. Where it stood is where the drag last
     /// said; should the drag not have spoken by then, the pinch stood within
     /// the drag's start of the touch, so the move is measured from the
-    /// touch, and the drag's first word after the arming, the first sign of
-    /// a move, pulls at the default distances, rather than asking for the
-    /// pull's distance past the drag's start.
+    /// touch, rather than asking for the break-free distance past the drag's
+    /// start. The lifted item's follow is measured from the same place.
     public var measuresPullFromLift: Bool
 
     /// Whether an armed pinch's move is measured from where it stood as its
@@ -182,11 +230,13 @@ public struct PluckTuning: Equatable, Sendable, Codable {
 
     /// A tuning with GestureKit's defaults, changed as given.
     public init(
-        holdDuration: Double = 0.5,
+        holdDuration: Double = 0.25,
         holdStillness: Double = 40,
         pullArmDelay: Double = 0.2,
         dragStartDistance: Double = 15,
-        pullDistance: Double = 0.006,
+        breakFreeDistance: Double = 0.025,
+        followShare: Double = 0.5,
+        followCap: Double = 20,
         pullDepthPerDrift: Double = 0.5,
         pullsAnyDirection: Bool = true,
         measuresPullFromLift: Bool = true,
@@ -207,7 +257,9 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.holdStillness = holdStillness
         self.pullArmDelay = pullArmDelay
         self.dragStartDistance = dragStartDistance
-        self.pullDistance = pullDistance
+        self.breakFreeDistance = breakFreeDistance
+        self.followShare = followShare
+        self.followCap = followCap
         self.pullDepthPerDrift = pullDepthPerDrift
         self.pullsAnyDirection = pullsAnyDirection
         self.measuresPullFromLift = measuresPullFromLift
@@ -256,11 +308,17 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         .seconds(releaseTapGrace)
     }
 
-    /// The pull's distance in the item's points, at `pointsPerMeter`, as the
-    /// caller measures a meter where the item is: 6 mm is about 8 pt at a
-    /// window's own size.
-    public func pullThreshold(pointsPerMeter: Double) -> Double {
-        pullDistance * pointsPerMeter
+    /// The break-free distance in the item's points, at `pointsPerMeter`, as
+    /// the caller measures a meter of the hand's move where the item is:
+    /// 2.5 cm is 34 pt at a window's own size.
+    public func breakFreeThreshold(pointsPerMeter: Double) -> Double {
+        breakFreeDistance * pointsPerMeter
+    }
+
+    /// How a lifted item follows its pinch until it breaks free: a share of
+    /// the hand's move, easing toward a cap.
+    public var tether: PluckTether {
+        PluckTether(share: followShare, cap: followCap)
     }
 
     /// Whether a move the drag reports `distance` from where the pinch
@@ -291,7 +349,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         armingPoint: SIMD3<Double>?,
         pointsPerMeter: Double
     ) -> PluckPullJudgement {
-        let threshold = pullThreshold(pointsPerMeter: pointsPerMeter)
+        let threshold = breakFreeThreshold(pointsPerMeter: pointsPerMeter)
         let origin = pullOrigin
         let point: SIMD3<Double>? = switch origin {
         case .touch: nil
@@ -309,11 +367,13 @@ extension PluckTuning: Tunable {
     public static var defaults: PluckTuning { PluckTuning() }
 
     public static let parameters: [TuningParameter<PluckTuning>] = [
-        .number(\.holdDuration, key: "holdDuration", title: "Hold", unit: "s", range: 0.1...2, step: 0.05),
+        .number(\.holdDuration, key: "holdDuration", title: "Hold before the lift", unit: "s", range: 0.1...2, step: 0.05),
         .number(\.holdStillness, key: "holdStillness", title: "Hold stillness", unit: "pt", range: 0...100, step: 1),
         .number(\.pullArmDelay, key: "pullArmDelay", title: "Pull arms after the lift", unit: "s", range: 0...1, step: 0.05),
         .number(\.dragStartDistance, key: "dragStartDistance", title: "Drag start", unit: "pt", range: 0...60, step: 1),
-        .number(\.pullDistance, key: "pullDistance", title: "Pull distance", unit: "m", range: 0.002...0.1, step: 0.001),
+        .number(\.breakFreeDistance, key: "breakFreeDistance", title: "Break free after", unit: "m", range: 0.002...0.1, step: 0.001),
+        .number(\.followShare, key: "followShare", title: "Lifted item follows, at first", range: 0...1, step: 0.05),
+        .number(\.followCap, key: "followCap", title: "Lifted item follows at most", unit: "pt", range: 0...60, step: 1),
         .number(\.pullDepthPerDrift, key: "pullDepthPerDrift", title: "Pull depth per drift across", range: 0...3, step: 0.05),
         .toggle(\.pullsAnyDirection, key: "pullsAnyDirection", title: "Any direction pulls"),
         .toggle(\.measuresPullFromLift, key: "measuresPullFromLift", title: "Pull measured from where it lifted"),

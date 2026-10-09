@@ -20,11 +20,15 @@
 ///   the press or the drag still has the pinch and the container didn't
 ///   scroll during it; a pinch let go before then, or moved past the hold's
 ///   stillness first, lifts nothing.
+/// - **Lifted, it's held**: its item follows the hand a little on its
+///   tether, short of breaking free (`stretch`, `PluckTether`).
 /// - **Its pull arms** once `pullArmDelay` has passed since its item
 ///   lifted, as the caller's count says (`armPull(at:)`), or the drag's
-///   next word, should the count be late.
+///   next word, should the count be late; then a move far enough breaks the
+///   item free, and it spawns, the rest of the pinch carrying what spawned
+///   (`PluckHandoff`).
 /// - **It's over** once neither gesture has it and its item is down: as
-///   the pull's drag ends after a scroll or a pull, or as the hold's press
+///   the pull's drag ends after a scroll or a spawn, or as the hold's press
 ///   ends after it came, the item's lift or a hold after the container
 ///   scrolled. One let go before its hold, which no move told as a scroll,
 ///   waits for its tap, which comes as it's let go, unless it came already:
@@ -103,6 +107,13 @@ public struct PluckPinches: Sendable {
         /// before it ended should its hold never come; 0 if its drag didn't
         /// speak by then.
         public var farthestBeforeHold: Double
+        /// The farthest it stretched toward breaking its item free while
+        /// the item was lifted, by the pull rule's measure, in the item's
+        /// points; 0 if its drag never spoke with the item lifted.
+        public var farthestStretch: Double
+        /// How far it had to go to break its item free, in the item's
+        /// points; nil if no move with the item lifted was judged.
+        public var breakFreeAt: Double?
     }
 
     /// A count the caller runs on its own clock, for the hold and for the
@@ -189,8 +200,9 @@ public struct PluckPinches: Sendable {
     private var began: ContinuousClock.Instant?
     private var lastBegan: ContinuousClock.Instant?
     private var heldAt: ContinuousClock.Instant?
-    /// When its item lifted, from which its pull arms.
-    private var liftedAt: ContinuousClock.Instant?
+    /// When the item of the pinch under way lifted, from which its pull
+    /// arms; nil until it lifts.
+    public private(set) var liftedAt: ContinuousClock.Instant?
     private var armedAt: ContinuousClock.Instant?
     private var pulledAt: ContinuousClock.Instant?
     private var pressEndedAt: ContinuousClock.Instant?
@@ -292,7 +304,7 @@ public struct PluckPinches: Sendable {
         }
         let (armed, _) = armIfDue(at: now)
         let (actions, why) = tell { $0.dragMoved(translation, pointsPerMeter: pointsPerMeter) }
-        if actions.contains(.beginPull) {
+        if actions.contains(.breakFree) {
             pulledAt = now
         }
         var countdowns: [Countdown] = []
@@ -388,6 +400,21 @@ public struct PluckPinches: Sendable {
         return Told(actions: actions, why: why, countdowns: Self.stopBoth, ended: ended)
     }
 
+    /// How far the pinch under way has stretched toward breaking its item
+    /// free, and where the item is drawn for it, while the item is held
+    /// lifted short of breaking free; nil otherwise
+    /// (`PluckPress.stretch`).
+    public var stretch: PluckStretch? {
+        press?.stretch
+    }
+
+    /// Where the item of the pinch under way is drawn from where it stands
+    /// lifted, in its points, following the hand on its tether; none
+    /// unless it's held lifted short of breaking free.
+    public var follow: SIMD3<Double> {
+        press?.follow ?? .zero
+    }
+
     /// Whether the pinch under way has its item kept up past its press:
     /// lifted, with neither its press nor its drag having it.
     public var isKeptUpPastItsPress: Bool {
@@ -402,7 +429,7 @@ public struct PluckPinches: Sendable {
         guard let press else { return Told(why: .noPinch) }
         var actions: [PluckPress.Action] = []
         if press.isPulling {
-            actions.append(.cancelPull)
+            actions.append(.cancelSpawn)
         }
         if press.isLifted {
             actions.append(.settle)
@@ -536,7 +563,9 @@ public struct PluckPinches: Sendable {
             dragReportedAfter: dragReportedAt.map { $0 - began },
             moved: moved,
             farthest: farthest,
-            farthestBeforeHold: farthestBeforeHold
+            farthestBeforeHold: farthestBeforeHold,
+            farthestStretch: press.farthestStretch,
+            breakFreeAt: press.breakFreeAt
         )
     }
 }

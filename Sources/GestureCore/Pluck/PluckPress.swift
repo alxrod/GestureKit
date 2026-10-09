@@ -1,7 +1,8 @@
 /// One pinch on an item in a scrolling container, a grid's or a list's, from
 /// its touch to its end, told as the container's scroll, a lift, or a pull
 /// as it goes: scroll first, then a hold in place lifts the item a little,
-/// and only a little later may it be pulled out into the room. Two things
+/// it stays lifted, following the hand a little, and only once the hand has
+/// gone far enough does it break free and spawn into the room. Two things
 /// tell it, neither taking the pinch from the container's scroll: the hold,
 /// which says when the pinch has been held `PluckTuning.holdDuration` (the
 /// caller counts it, as `PluckPinches` says, and asks whether the container
@@ -17,26 +18,34 @@
 ///   (`StayDown.movedFirst`), so a quick pinch yanked toward the viewer
 ///   pulls nothing. The drag's first word alone isn't such a move, as a
 ///   hand that has just pinched settles about 15 pt, the drag's start.
-/// - **A hold lifts.** Held `holdDuration`, its container not having
-///   scrolled, the item lifts (`Action.lift`), and, as the tuning says, its
-///   container's scroll stops under it until it settles
-///   (`PluckContainer`), so the hand's move belongs to the item.
-/// - **Then the pull arms**, `pullArmDelay` after the lift (`armPull()`).
-///   Between the lift and then, a move neither pulls nor scrolls.
-/// - **An armed pull** comes out with the first move the pull rule takes,
-///   by default 6 mm any way from where the pinch stood as its item lifted
-///   (`liftPoint`), so a hand that drifted during the hold doesn't pull the
-///   instant it arms, and one that came out as the item lifted catches up
-///   as the pull arms; or, as the tuning says, from where it stood as the
-///   pull armed (`armingPoint`), or from where it touched
-///   (`PluckPullRule`, `PluckPullOrigin`). A move it turns down pulls
-///   nothing, and the item stays up. A pull moves with its drag; one pinch
-///   pulls once.
+/// - **A hold lifts.** Held `holdDuration`, a quarter second by default,
+///   its container not having scrolled, the item lifts (`Action.lift`), and,
+///   as the tuning says, its container's scroll stops under it until it
+///   settles (`PluckContainer`), so the hand's move belongs to the item.
+/// - **Lifted, it's held.** Each move of the hand draws the item a little
+///   along with it, from where it stood as it lifted, on its tether
+///   (`stretch`, `follow`, `PluckTether`), and says how far the hand has
+///   gone toward breaking it free.
+/// - **The pull arms** `pullArmDelay` after the lift (`armPull()`), the
+///   least time the item shows lifted.
+/// - **It breaks free** once armed, with the first move the pull rule
+///   takes, by default 2.5 cm any way from where the pinch stood as its
+///   item lifted (`liftPoint`), so a hand that drifted during the hold
+///   doesn't break it free the instant it arms, and one that came out as
+///   the item lifted catches up as the pull arms; or, as the tuning says,
+///   from where it stood as the pull armed (`armingPoint`), or from where it
+///   touched (`PluckPullRule`, `PluckPullOrigin`). A move it turns down
+///   breaks nothing free, and the item stays up, following. Breaking free,
+///   the item spawns into the room where the drag is (`Action.breakFree`),
+///   and the pluck's part is over: the rest of the pinch carries what
+///   spawned, each move handed to a carry (`Action.carrySpawned`,
+///   `PluckHandoff`). One pinch breaks free once.
 /// - **The item settles** as the pinch is let go: as its drag ends, or is
 ///   cancelled, if the drag has spoken; else as the hold's press ends,
 ///   unless the tuning keeps it up then (`pressEndSettlesLiftedItem`). The
 ///   press may end while the drag goes on, as the hand moves off the item,
-///   and the item stays up then.
+///   and the item stays up then. Let go short of breaking free, it settles
+///   with nothing spawned.
 /// - **The release tap**: a pinch that lifted its item lets the item's tap
 ///   fire as it's let go, which isn't a tap (`swallowsReleaseTap`). A pinch
 ///   let go before its hold is the item's tap.
@@ -59,17 +68,21 @@ public struct PluckPress: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
         /// The item lifts, its pinch held.
         case lift
-        /// Its pull arms: the next move the pull rule takes pulls it out.
+        /// Its pull arms: the next move the pull rule takes breaks it free.
         case pullArmed
-        /// A pull begins where the drag is, the caller making what the item
-        /// pulls out in the room.
-        case beginPull
-        /// The pull moves to where the drag is.
-        case movePull
-        /// The pull lands where the drag was let go.
-        case endPull
-        /// The pull's drag was cancelled: what it pulled out is taken away.
-        case cancelPull
+        /// The item broke free: the caller spawns what it pulls out in the
+        /// room where the drag is, and the pluck's part ends. The rest of the
+        /// pinch carries what spawned (`carrySpawned`, `PluckHandoff`).
+        case breakFree
+        /// The pinch moved after the spawn: the carry of what spawned takes
+        /// the move, 1:1 with the hand (`PluckHandoff`).
+        case carrySpawned
+        /// The pinch let go of what spawned, which stays where its carry
+        /// last put it.
+        case releaseSpawned
+        /// The pull's drag was cancelled after the spawn: what spawned is
+        /// taken away.
+        case cancelSpawn
         /// The item settles back into its container.
         case settle
         /// The item stays down for the rest of the pinch: nothing to do,
@@ -84,9 +97,10 @@ public struct PluckPress: Equatable, Sendable {
     public private(set) var isHeld = false
     /// Whether its pull has armed.
     public private(set) var isArmed = false
-    /// Whether its pull is under way.
+    /// Whether its pull is under way: its item broke free, and the pinch
+    /// carries what spawned.
     public private(set) var isPulling = false
-    /// Whether it has pulled.
+    /// Whether its item broke free.
     public private(set) var hasPulled = false
     /// Whether the pull's drag has said it moved past the hold's stillness,
     /// at any time; at a stillness no greater than the drag's start, whether
@@ -110,6 +124,18 @@ public struct PluckPress: Equatable, Sendable {
     public private(set) var isDragging = false
     /// Whether its hold lifted its item.
     public private(set) var liftedByHold = false
+    /// How far it has stretched toward breaking its item free, and where the
+    /// item is drawn for it, as its last move with the item lifted was
+    /// judged; nil until the drag speaks with the item lifted, and once the
+    /// item breaks free or settles.
+    public private(set) var stretch: PluckStretch?
+    /// The farthest it stretched toward breaking its item free while the
+    /// item was lifted, by the pull rule's measure, in the item's points: 0
+    /// if the drag never spoke with it lifted.
+    public private(set) var farthestStretch = 0.0
+    /// How far it had to go to break its item free, in the item's points, as
+    /// its moves with the item lifted were judged; nil if none was.
+    public private(set) var breakFreeAt: Double?
     /// Why its item stays down; nil unless it does.
     public private(set) var stayedDown: StayDown?
     /// Why its last word did what it did, for a trace.
@@ -124,6 +150,14 @@ public struct PluckPress: Equatable, Sendable {
     /// Whether its item is lifted: held, or pulling.
     public var isLifted: Bool {
         isHeld || isPulling
+    }
+
+    /// Where its item is drawn from where it stands lifted, in its points,
+    /// following the hand on its tether while it's held short of breaking
+    /// free (`stretch`); none otherwise, so it springs back to its place as
+    /// it breaks free or settles.
+    public var follow: SIMD3<Double> {
+        stretch?.follow ?? .zero
     }
 
     public init(tuning: PluckTuning = PluckTuning()) {
@@ -169,12 +203,14 @@ public struct PluckPress: Equatable, Sendable {
     }
 
     /// The pull's drag moved, `translation` from where the pinch touched, in
-    /// the item's points, where the caller measures `pointsPerMeter`: before
-    /// the hold, past the stillness, the pinch is a scroll for good; lifted,
-    /// nothing until the pull arms; armed, a pull begins once the pull rule
-    /// takes the move, from where the pinch stood as its item lifted, or as
-    /// its pull armed, or from the touch, as tuned, and moves with the drag
-    /// after. A move that isn't a number moves nothing.
+    /// the item's points, where the caller measures `pointsPerMeter` to a
+    /// meter of the hand's move: before the hold, past the stillness, the
+    /// pinch is a scroll for good; lifted, the item follows on its tether,
+    /// and once the pull has armed, it breaks free as the pull rule takes
+    /// the move, from where the pinch stood as its item lifted, or as its
+    /// pull armed, or from the touch, as tuned; broken free, each move is
+    /// handed to the carry of what spawned. A move that isn't a number moves
+    /// nothing.
     public mutating func dragMoved(_ translation: SIMD3<Double>, pointsPerMeter: Double) -> [Action] {
         isDragging = true
         guard translation.x.isFinite, translation.y.isFinite, translation.z.isFinite else {
@@ -188,8 +224,8 @@ public struct PluckPress: Equatable, Sendable {
             hasMoved = true
         }
         if isPulling {
-            why = .pullMoved
-            return [.movePull]
+            why = .handedToTheCarry
+            return [.carrySpawned]
         }
         if !liftedByHold, stayedDown == nil {
             guard breaksStillness else {
@@ -214,43 +250,47 @@ public struct PluckPress: Equatable, Sendable {
             why = .notLifted
             return []
         }
-        guard isArmed else {
-            why = .notArmedYet
-            return []
-        }
         let judgement = tuning.judgePull(translation, liftPoint: liftPoint, armingPoint: armingPoint, pointsPerMeter: pointsPerMeter)
-        guard judgement.isPull else {
-            why = .notAPull(judgement)
+        breakFreeAt = judgement.threshold
+        guard isArmed, judgement.isPull else {
+            // Held: the item follows a little, and the pinch has gone this
+            // far toward breaking it free.
+            let reach = tuning.pullRule.reach(of: judgement)
+            stretch = PluckStretch(reach: reach, needs: judgement.threshold, follow: tuning.tether.follow(forMove: translation - (liftPoint ?? .zero)))
+            farthestStretch = max(farthestStretch, reach)
+            why = isArmed ? .notAPull(judgement) : .notArmedYet
             return []
         }
+        farthestStretch = max(farthestStretch, tuning.pullRule.reach(of: judgement))
+        stretch = nil
         isPulling = true
         hasPulled = true
-        why = .pulled(judgement)
-        return [.beginPull]
+        why = .brokeFree(judgement)
+        return [.breakFree]
     }
 
-    /// The pull's drag was let go, the pinch with it: a pull lands, and the
-    /// item settles.
+    /// The pull's drag was let go, the pinch with it: what spawned is let
+    /// go, and the item settles.
     public mutating func dragEnded() -> [Action] {
         isDragging = false
         var actions: [Action] = []
         if isPulling {
             isPulling = false
-            actions.append(.endPull)
+            actions.append(.releaseSpawned)
         }
         why = .dragEnded
         return actions + letDown()
     }
 
-    /// The pull's drag was cancelled: what a pull took out is taken away,
-    /// and the item settles at once, so its container scrolls again,
-    /// whatever the hold's press says.
+    /// The pull's drag was cancelled: what spawned is taken away, and the
+    /// item settles at once, so its container scrolls again, whatever the
+    /// hold's press says.
     public mutating func dragCancelled() -> [Action] {
         isDragging = false
         var actions: [Action] = []
         if isPulling {
             isPulling = false
-            actions.append(.cancelPull)
+            actions.append(.cancelSpawn)
         }
         why = .dragCancelled
         return actions + letDown()
@@ -313,6 +353,7 @@ public struct PluckPress: Equatable, Sendable {
     private mutating func letDown() -> [Action] {
         guard isHeld else { return [] }
         isHeld = false
+        stretch = nil
         return [.settle]
     }
 }
