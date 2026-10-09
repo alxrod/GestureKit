@@ -39,17 +39,23 @@ the order the areas arrive in.
   - `TraceLog`: the last interactions with a gesture, newest first
     (`TracedInteraction`), each with its timed events (`TraceEvent`), its
     outcome, and a one-line summary.
+  - `TracePacing`: when a trace shows its log's changes: the first after a
+    quiet spell at once, then at most once a tenth of a second.
 - `Sources/GestureKit/<Area>/`: an area's adapters, wrapped whole in
   `#if os(visionOS)`.
 - `Sources/GestureKit/Lab/`: the lab's shared views, also visionOS only.
   - `TraceRecorder` and `InteractionTrace`: an observable trace an adapter
-    is handed, optionally, which logs each finished interaction's summary.
+    is handed, optionally, which logs each finished interaction's summary,
+    and gives what a trace shows of it paced (`shownLog`, `TracePacing`).
   - `TraceView`: a recorder's interactions as timelines, large and white on
-    black.
+    black, laid out in the room it's offered alone, so an event lays out
+    nothing beside it.
   - `TuningStore`: a tuning tuned live, saved in `UserDefaults` under a
-    namespace.
+    namespace; a set that changes nothing tells no one.
   - `TuningPanel`: any tuning's sliders and switches, Defaults, and Copy
-    tuning.
+    tuning; each row drawn again only as its value changes, and each slider
+    unstepped, its value fitted to the step as it's set, since a stepped
+    slider's marks made every slider in a window cost as any one moved.
 - `Tests/GestureCoreTests/<Area>/` and `Tests/GestureCoreTests/Lab/`: the
   core's tests, a folder per area.
 - `Lab/`: GestureLab.
@@ -73,6 +79,8 @@ the order the areas arrive in.
       the space's view, and where stations stand (`LabSpace.front`).
     - `Stations/<Area>/`: each station. `Stations/TraceCheck/` is the
       starter, a cube to pinch, traced, its size tuned live.
+    - `LabLoad`, DEBUG only: a load the lab puts on itself, as a hand
+      would, for measuring in the simulator (see "Measuring the lab").
 - `scripts/build-check.sh`: the lab's compile check.
 - `docs/design.md`: the design.
 - `Local.xcconfig.example`: copy to `Local.xcconfig`, gitignored, and set
@@ -133,6 +141,37 @@ the order the areas arrive in.
   root, set `DEVELOPMENT_TEAM`, open `Lab/GestureLab.xcodeproj`, and run
   the GestureLab scheme on a Vision Pro or the simulator, where a click is
   a pinch.
+
+## Measuring the lab
+
+The simulator can't pinch, so a DEBUG build takes launch arguments that
+stand in for a hand (`LabLoad`):
+
+- `-station <id>` chooses the station at launch: `trace-check`,
+  `carry-and-face`, `below-the-gaze`, `press`, or `pluck`.
+- `-labLoad <kinds>`, comma-separated, begins 3 s in: `trace`, 20 trace
+  events a second after 30 interactions of 15; `tuning`, the station's
+  first number slid across its range, set 60 times a second; `pull`, the
+  pluck's card moved 90 times a second; `scroll`, the pluck's grid scrolled
+  at 1,500 pt a second; `drag`, the press's playhead moved 90 times a
+  second; `coast`, the press's playhead flicked every 2 s; and `switch`,
+  the next station chosen every 4 s. What a load changes stays, as a
+  hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
+  `switch` the station it chose last remembered.
+
+Build the lab for the simulator into a throwaway DerivedData, install it on
+a simulator of your own with `xcrun simctl install`, launch it with
+`xcrun simctl launch <device> net.alexbrodriguez.gesturelab -station pluck
+-labLoad pull`, and read the app's CPU from its CPU time, `ps -o time= -p
+<pid>`, over 15 s or so, and where it goes with `sample <pid> 5`. In a
+Debug build, each station idles at about 0% of a core, and each load costs
+8-30%; until the trace and the tuning's sliders stopped laying out the
+whole window, the trace load cost up to 54% and the tuning load 100%.
+
+A view that changes at a hand's every step lays out nothing beside it and
+is read by nothing that doesn't show it: the trace takes its room whatever
+it shows, and the pluck station's windows read how many cards there are,
+not where they stand.
 
 ## Adding a gesture area
 

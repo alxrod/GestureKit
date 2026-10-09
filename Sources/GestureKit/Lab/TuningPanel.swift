@@ -92,7 +92,7 @@ private struct TuningPanelRow<Tuning: Tunable>: View, Equatable {
             }
             // Unstepped, its value fitted to the step as it's set
             // (`TuningStore.set`), so it still moves a step at a time: a
-            // stepped slider draws a mark at each step, up to 120 of them on
+            // stepped slider draws a mark at each step, up to 361 of them on
             // one, which made each value set cost more than all else in a
             // station's window, in proportion to every stepped slider there.
             Slider(
