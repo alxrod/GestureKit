@@ -143,8 +143,8 @@ import Testing
         #expect(PluckPullJudgement(depth: -3.04, drift: 0, threshold: 27, verdict: .tooShallow, origin: .touch).description == "too shallow, 3.0 pt from the touch (-3.0 deep, 0.0 across), needs 27.0 pt")
         let short = PluckPullJudgement(depth: 5.3, drift: 1.6, threshold: 8.16, verdict: .tooShort, origin: .arming)
         #expect(PluckReason.notAPull(short).description == "no pull: too short, 5.5 pt from where it armed (5.3 deep, 1.6 across), needs 8.2 pt")
-        let pulled = PluckPullJudgement(depth: 4.2, drift: 14.5, threshold: 8.16, verdict: .pulls, origin: .arming)
-        #expect(PluckReason.pulled(pulled).description == "pull: pulls, 15.1 pt from where it armed (4.2 deep, 14.5 across), needs 8.2 pt")
+        let pulled = PluckPullJudgement(depth: 4.2, drift: 14.5, threshold: 8.16, verdict: .pulls, origin: .lift)
+        #expect(PluckReason.pulled(pulled).description == "pull: pulls, 15.1 pt from where it lifted (4.2 deep, 14.5 across), needs 8.2 pt")
     }
 
     /// A reason's name tells one kind from another whatever its numbers.

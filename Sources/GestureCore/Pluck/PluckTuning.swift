@@ -10,15 +10,16 @@
 /// before its hold, is the container's scroll; held still half a second,
 /// the item lifts and the container's scroll stops under it; two tenths of
 /// a second later its pull arms, and a move of 6 mm any way from where the
-/// pinch stood then pulls it out. They're the numbers the pluck first
-/// shipped with but four, which the lab's traces on the headset showed
-/// almost never pulled and often lost the hold: the drag's first word, at
-/// its 15 pt start, no longer makes the pinch a scroll (`holdStillness`); a
-/// pull needs no depth (`pullsAnyDirection`), counts only the move since the
-/// arming (`measuresPullFromArming`), and is under a third as far
-/// (`pullDistance`); and a lifted item stays up as the hold's press ends
-/// while the drag hasn't spoken, since stopping the container's scroll as
-/// the item lifts may cancel the press (`pressEndSettlesLiftedItem`).
+/// pinch stood as the item lifted pulls it out. They're the numbers the
+/// pluck first shipped with but five, which the lab's traces on the headset
+/// showed almost never pulled and often lost the hold: the drag's first
+/// word, at its 15 pt start, no longer makes the pinch a scroll
+/// (`holdStillness`); a pull needs no depth (`pullsAnyDirection`), counts
+/// only the move since the lift (`measuresPullFromLift`), and is under a
+/// third as far (`pullDistance`); and a lifted item stays up as the hold's
+/// press ends while the drag hasn't spoken, since stopping the container's
+/// scroll as the item lifts may cancel the press
+/// (`pressEndSettlesLiftedItem`).
 ///
 /// Distances on the item are in its own points, as a SwiftUI drag reports
 /// them, with +z toward the viewer; the pull's distance is in meters, which
@@ -63,7 +64,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
 
     /// How far an armed pinch moves to pull its item out, in meters: 6 mm,
     /// about 8 pt at a window's own size, any way from where the pinch stood
-    /// as the pull armed, by default. The pull rule reads it in the item's
+    /// as its item lifted, by default. The pull rule reads it in the item's
     /// points (`pullThreshold(pointsPerMeter:)`).
     ///
     /// On the headset the drag reports depth in steps of about 4 pt, so one
@@ -90,17 +91,27 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public var pullsAnyDirection: Bool
 
     /// Whether an armed pinch's move is measured from where it stood as its
-    /// pull armed, as by default, or from where it touched, as the pluck
-    /// first shipped.
+    /// item lifted: on by default, and ahead of `measuresPullFromArming`.
     ///
-    /// From the arming, a hand that drifted during the hold, as hands do,
-    /// doesn't pull the instant it arms. Where it stood is where the drag
-    /// last said; should the drag not have spoken by then, the pinch stood
-    /// within the drag's start of the touch, so the move is measured from
-    /// the touch, and the drag's first word, the first sign of a move, pulls
-    /// at the default distances, rather than asking for the pull's distance
-    /// past the drag's start. From the touch, a hand already on its way out
-    /// catches up as the pull arms.
+    /// A hand that drifted during the hold, as hands do, doesn't pull the
+    /// instant it arms, and a hand that comes out as soon as the item lifts,
+    /// as the headset's traces showed one 13 pt toward the viewer in the two
+    /// tenths of a second before the arming, has that move counted, so it
+    /// catches up as the pull arms. Where it stood is where the drag last
+    /// said; should the drag not have spoken by then, the pinch stood within
+    /// the drag's start of the touch, so the move is measured from the
+    /// touch, and the drag's first word after the arming, the first sign of
+    /// a move, pulls at the default distances, rather than asking for the
+    /// pull's distance past the drag's start.
+    public var measuresPullFromLift: Bool
+
+    /// Whether an armed pinch's move is measured from where it stood as its
+    /// pull armed, should `measuresPullFromLift` be off: off by default. On,
+    /// only a move since the arming counts, a hand's move between the lift
+    /// and the arming lost; with both off, the move is measured from the
+    /// touch, as the pluck first shipped, so a hand already on its way out
+    /// catches up as the pull arms, and one that drifted during the hold may
+    /// pull the instant it arms.
     public var measuresPullFromArming: Bool
 
     /// Whether a drag's z grows toward the viewer, as SwiftUI's does, which
@@ -178,7 +189,8 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         pullDistance: Double = 0.006,
         pullDepthPerDrift: Double = 0.5,
         pullsAnyDirection: Bool = true,
-        measuresPullFromArming: Bool = true,
+        measuresPullFromLift: Bool = true,
+        measuresPullFromArming: Bool = false,
         depthGrowsTowardViewer: Bool = true,
         depthScale: Double = 1,
         stopsScrollUnderLiftedItem: Bool = true,
@@ -198,6 +210,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.pullDistance = pullDistance
         self.pullDepthPerDrift = pullDepthPerDrift
         self.pullsAnyDirection = pullsAnyDirection
+        self.measuresPullFromLift = measuresPullFromLift
         self.measuresPullFromArming = measuresPullFromArming
         self.depthGrowsTowardViewer = depthGrowsTowardViewer
         self.depthScale = depthScale
@@ -221,9 +234,11 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     }
 
     /// Where an armed pinch's move is measured from: where it stood as its
-    /// pull armed, as by default, or where it touched.
+    /// item lifted, as by default; else where it stood as its pull armed,
+    /// should the tuning say so; else where it touched.
     public var pullOrigin: PluckPullOrigin {
-        measuresPullFromArming ? .arming : .touch
+        if measuresPullFromLift { return .lift }
+        return measuresPullFromArming ? .arming : .touch
     }
 
     /// How long a pinch is held before its item lifts.
@@ -266,15 +281,27 @@ public struct PluckTuning: Equatable, Sendable, Codable {
 
     /// Judges whether an armed pinch at `translation` from where it touched,
     /// in the item's points, pulls its item out, by the pull rule, at
-    /// `pointsPerMeter`: its move from `armedAt`, where the drag said it
-    /// stood as its pull armed, should the tuning measure from there; else,
-    /// or with the drag silent then, nil, its move from the touch.
-    public func judgePull(_ translation: SIMD3<Double>, armedAt: SIMD3<Double>?, pointsPerMeter: Double) -> PluckPullJudgement {
+    /// `pointsPerMeter`: its move from where the drag said it stood as its
+    /// item lifted, `liftPoint`, or as its pull armed, `armingPoint`, as the
+    /// tuning measures it (`pullOrigin`); else, or with the drag silent
+    /// then, nil, its move from the touch.
+    public func judgePull(
+        _ translation: SIMD3<Double>,
+        liftPoint: SIMD3<Double>?,
+        armingPoint: SIMD3<Double>?,
+        pointsPerMeter: Double
+    ) -> PluckPullJudgement {
         let threshold = pullThreshold(pointsPerMeter: pointsPerMeter)
-        guard measuresPullFromArming, let armedAt else {
+        let origin = pullOrigin
+        let point: SIMD3<Double>? = switch origin {
+        case .touch: nil
+        case .lift: liftPoint
+        case .arming: armingPoint
+        }
+        guard let point else {
             return pullRule.judge(viewerTranslation(translation), threshold: threshold, from: .touch)
         }
-        return pullRule.judge(viewerTranslation(translation - armedAt), threshold: threshold, from: .arming)
+        return pullRule.judge(viewerTranslation(translation - point), threshold: threshold, from: origin)
     }
 }
 
@@ -289,7 +316,8 @@ extension PluckTuning: Tunable {
         .number(\.pullDistance, key: "pullDistance", title: "Pull distance", unit: "m", range: 0.002...0.1, step: 0.001),
         .number(\.pullDepthPerDrift, key: "pullDepthPerDrift", title: "Pull depth per drift across", range: 0...3, step: 0.05),
         .toggle(\.pullsAnyDirection, key: "pullsAnyDirection", title: "Any direction pulls"),
-        .toggle(\.measuresPullFromArming, key: "measuresPullFromArming", title: "Pull measured from where it armed"),
+        .toggle(\.measuresPullFromLift, key: "measuresPullFromLift", title: "Pull measured from where it lifted"),
+        .toggle(\.measuresPullFromArming, key: "measuresPullFromArming", title: "Else from where it armed, not the touch"),
         .toggle(\.depthGrowsTowardViewer, key: "depthGrowsTowardViewer", title: "Drag's z grows toward you"),
         .number(\.depthScale, key: "depthScale", title: "Drag's depth scale", range: 0.25...4, step: 0.05),
         .toggle(\.stopsScrollUnderLiftedItem, key: "stopsScrollUnderLiftedItem", title: "Scroll stops under a lifted item"),

@@ -24,10 +24,11 @@
 /// - **Then the pull arms**, `pullArmDelay` after the lift (`armPull()`).
 ///   Between the lift and then, a move neither pulls nor scrolls.
 /// - **An armed pull** comes out with the first move the pull rule takes,
-///   by default 6 mm any way from where the pinch stood as the pull armed
-///   (`armedAt`), so a hand that drifted during the hold doesn't pull the
-///   instant it arms; or, as the tuning says, from where it touched, so a
-///   hand already on its way out catches up as the pull arms
+///   by default 6 mm any way from where the pinch stood as its item lifted
+///   (`liftPoint`), so a hand that drifted during the hold doesn't pull the
+///   instant it arms, and one that came out as the item lifted catches up
+///   as the pull arms; or, as the tuning says, from where it stood as the
+///   pull armed (`armingPoint`), or from where it touched
 ///   (`PluckPullRule`, `PluckPullOrigin`). A move it turns down pulls
 ///   nothing, and the item stays up. A pull moves with its drag; one pinch
 ///   pulls once.
@@ -94,12 +95,16 @@ public struct PluckPress: Equatable, Sendable {
     /// Where the pull's drag last said the pinch is, from where it touched,
     /// in the item's points; nil until it speaks.
     public private(set) var dragTranslation: SIMD3<Double>?
-    /// Where the pinch stood as its pull armed, from where it touched, in
-    /// the item's points, as the drag last said then. Nil until the pull
-    /// arms, and after, should the drag not have spoken by then: the pinch
-    /// stood within the drag's start of the touch, and its pull is measured
-    /// from the touch.
-    public private(set) var armedAt: SIMD3<Double>?
+    /// Where the pinch stood as its item lifted, from where it touched, in
+    /// the item's points, as the drag last said then. Nil until the item
+    /// lifts, and after, should the drag not have spoken by then: the pinch
+    /// stood within the drag's start of the touch, and a pull measured from
+    /// the lift is measured from the touch.
+    public private(set) var liftPoint: SIMD3<Double>?
+    /// Where the pinch stood as its pull armed, as `liftPoint` is where it
+    /// stood as its item lifted: nil until the pull arms, or with the drag
+    /// silent by then.
+    public private(set) var armingPoint: SIMD3<Double>?
     /// Whether the pull's drag has the pinch: it has spoken, and not yet
     /// ended or been cancelled.
     public private(set) var isDragging = false
@@ -141,6 +146,7 @@ public struct PluckPress: Equatable, Sendable {
         }
         isHeld = true
         liftedByHold = true
+        liftPoint = dragTranslation
         why = .heldStill
         return [.lift]
     }
@@ -157,7 +163,7 @@ public struct PluckPress: Equatable, Sendable {
             return []
         }
         isArmed = true
-        armedAt = dragTranslation
+        armingPoint = dragTranslation
         why = .armed
         return [.pullArmed]
     }
@@ -166,9 +172,9 @@ public struct PluckPress: Equatable, Sendable {
     /// the item's points, where the caller measures `pointsPerMeter`: before
     /// the hold, past the stillness, the pinch is a scroll for good; lifted,
     /// nothing until the pull arms; armed, a pull begins once the pull rule
-    /// takes the move, from where the pinch stood as it armed or from the
-    /// touch, as tuned, and moves with the drag after. A move that isn't a
-    /// number moves nothing.
+    /// takes the move, from where the pinch stood as its item lifted, or as
+    /// its pull armed, or from the touch, as tuned, and moves with the drag
+    /// after. A move that isn't a number moves nothing.
     public mutating func dragMoved(_ translation: SIMD3<Double>, pointsPerMeter: Double) -> [Action] {
         isDragging = true
         guard translation.x.isFinite, translation.y.isFinite, translation.z.isFinite else {
@@ -212,7 +218,7 @@ public struct PluckPress: Equatable, Sendable {
             why = .notArmedYet
             return []
         }
-        let judgement = tuning.judgePull(translation, armedAt: armedAt, pointsPerMeter: pointsPerMeter)
+        let judgement = tuning.judgePull(translation, liftPoint: liftPoint, armingPoint: armingPoint, pointsPerMeter: pointsPerMeter)
         guard judgement.isPull else {
             why = .notAPull(judgement)
             return []

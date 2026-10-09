@@ -10,7 +10,7 @@ extension PluckTuning {
         holdStillness: 15,
         pullDistance: 0.02,
         pullsAnyDirection: false,
-        measuresPullFromArming: false,
+        measuresPullFromLift: false,
         pressEndSettlesLiftedItem: true
     )
 
@@ -20,6 +20,6 @@ extension PluckTuning {
     static let towardTheViewerFromTheTouch = PluckTuning(
         pullDistance: 0.02,
         pullsAnyDirection: false,
-        measuresPullFromArming: false
+        measuresPullFromLift: false
     )
 }

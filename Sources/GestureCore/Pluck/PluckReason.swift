@@ -188,6 +188,7 @@ extension PluckPullJudgement: CustomStringConvertible {
         }
         let origin = switch origin {
         case .touch: "the touch"
+        case .lift: "where it lifted"
         case .arming: "where it armed"
         }
         return "\(verdict), \(pluckPoints(distance)) from \(origin) (\(pluckOneDecimal(depth)) deep, \(pluckOneDecimal(drift)) across), needs \(pluckPoints(threshold))"

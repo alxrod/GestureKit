@@ -60,15 +60,23 @@ public enum PluckPullRule: Equatable, Sendable, Codable {
 }
 
 /// Where an armed pinch's move is measured from, as the tuning says
-/// (`PluckTuning.measuresPullFromArming`).
+/// (`PluckTuning.pullOrigin`). Where the drag hadn't spoken by the lift or
+/// the arming, the pinch stood within its start of the touch, and the move
+/// is measured from the touch.
 public enum PluckPullOrigin: String, Equatable, Sendable, Codable {
     /// Where the pinch touched the item, so a hand already on its way out
     /// catches up as the pull arms, but a hand that drifted during the hold
     /// may pull the instant it arms: as the pluck first shipped.
     case touch
+    /// Where the pinch stood as its item lifted, as the drag last said: the
+    /// default. A hand that drifted during the hold doesn't pull the instant
+    /// it arms, and one that comes out as soon as the item lifts, in the
+    /// two tenths of a second before the arming, as hands do, has that move
+    /// counted, so it catches up as the pull arms.
+    case lift
     /// Where the pinch stood as its pull armed, as the drag last said, so
-    /// only a move made since counts: the default, which measures from the
-    /// touch while the drag hadn't spoken by the arming.
+    /// only a move made since counts, a hand's move between the lift and the
+    /// arming lost.
     case arming
 }
 
