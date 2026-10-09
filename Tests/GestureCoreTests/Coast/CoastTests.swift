@@ -12,6 +12,15 @@ import Testing
         abs(a - b) < tolerance
     }
 
+    /// The lab's panel describes every number soundly.
+    @Test func itsParametersAreSound() {
+        #expect(Coast.Tuning.parameterProblems.isEmpty)
+        #expect(Coast.Tuning.parameters.map(\.key) == [
+            "sampleSpan", "slowestRelease", "slowestCatch", "timeConstant", "stoppingSpeed", "shortestCoast",
+        ])
+        #expect(Coast.Tuning.defaults == Coast.Tuning())
+    }
+
     @Test func itLooksBackATenthOfASecondAndSlowsByEEveryEightTenths() {
         let tuning = Coast.Tuning()
         #expect(tuning.sampleSpan == 0.1)

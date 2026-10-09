@@ -29,13 +29,23 @@ public struct HoldWatch: Equatable, Sendable {
         /// How much a move in depth counts toward that distance: half as
         /// much as one along or across the control.
         public var depthWeight: Double
+        /// How long after a pinch that held is let go the control's tap is
+        /// still taken for the hold's, in seconds: a quarter of a second.
+        /// SwiftUI calls a release's callbacks in no promised order, so the
+        /// tap the release makes may come after the watch hears the end, and
+        /// none comes this late.
+        public var heldTapGrace: Double
 
         /// A hold watch's tuning, each number its default unless given.
-        public init(duration: Double = 0.6, stillDistance: Double = 10, depthWeight: Double = 0.5) {
+        public init(duration: Double = 0.6, stillDistance: Double = 10, depthWeight: Double = 0.5, heldTapGrace: Double = 0.25) {
             self.duration = duration
             self.stillDistance = stillDistance
             self.depthWeight = depthWeight
+            self.heldTapGrace = heldTapGrace
         }
+
+        /// GestureKit's hold watch.
+        public static let defaults = Tuning()
     }
 
     /// What the pinch has come to so far.
@@ -109,4 +119,14 @@ public struct HoldWatch: Equatable, Sendable {
     public var holds: Bool {
         stage == .held
     }
+}
+
+extension HoldWatch.Tuning: Tunable {
+    /// The hold watch's numbers as the lab tunes them.
+    public static let parameters: [TuningParameter<HoldWatch.Tuning>] = [
+        .number(\.duration, key: "duration", title: "Holds after", unit: "s", range: 0.1...2, step: 0.05),
+        .number(\.stillDistance, key: "stillDistance", title: "Still within", unit: "pt", range: 0...40, step: 0.5),
+        .number(\.depthWeight, key: "depthWeight", title: "Depth counts", unit: "×", range: 0...2, step: 0.05),
+        .number(\.heldTapGrace, key: "heldTapGrace", title: "Tap after a hold ignored for", unit: "s", range: 0...1, step: 0.05),
+    ]
 }
