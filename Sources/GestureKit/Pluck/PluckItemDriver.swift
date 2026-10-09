@@ -6,13 +6,25 @@ import SwiftUI
 
 private let pluckItemLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category: "PluckItemDriver")
 
+/// Where a lifted item is drawn from where it stands lifted, as its pinch's
+/// tether says (`PluckPinches.follow`), observed apart from everything else
+/// about the item, so the hand's every step draws the item's follow and
+/// nothing more.
+@MainActor @Observable
+final class PluckItemFollow {
+    /// In the item's points: x across, y down, z toward the viewer.
+    var offset: SIMD3<Double> = .zero
+}
+
 /// One pluckable item's pinches, kept in a reference so telling them during
 /// a drag doesn't redraw the item: `PluckPinches` told each word of its
 /// press, its tap, its drag, its counts, and its container, with the time;
 /// the counts it asks for, run on the main actor; what it tells the item to
-/// do, done through the container's model and reported to the app; and each
-/// pinch traced, from its touch to its end, with why each word did what it
-/// did.
+/// do, done through the container's model and reported to the app; where
+/// the lifted item is drawn as the hand tugs it (`follow`); from the spawn
+/// on, the hand's moves handed to the carry of what spawned
+/// (`PluckHandoff`); and each pinch traced, from its touch to its end, with
+/// why each word did what it did.
 @MainActor
 final class PluckItemDriver {
     /// What a word needs to know of the item where it came from: its id and
@@ -27,11 +39,16 @@ final class PluckItemDriver {
         let perform: (PluckEvent) -> Void
         let metrics: PhysicalMetricsConverter
 
-        /// The item's points to a meter, where it is.
-        @MainActor var pointsPerMeter: Double {
+        /// The window's own points to a meter, as its physical metrics give
+        /// them: 1,360 on visionOS.
+        @MainActor var ownPointsPerMeter: Double {
             Double(metrics.convert(CGFloat(1), from: .meters))
         }
     }
+
+    /// Where the lifted item is drawn as the hand tugs it, which its drawing
+    /// alone reads.
+    let follow = PluckItemFollow()
 
     private var pinches = PluckPinches()
     /// The setting the last word came with, which the counts and the
@@ -51,6 +68,20 @@ final class PluckItemDriver {
     private var lastLocation: Point3D?
     /// The last drag word the trace noted: its reason's name and its time.
     private var lastDragNote: (name: String, at: ContinuousClock.Instant)?
+    /// The item's points to a meter of the hand's move, measured once for
+    /// the pinch under way, with the window's scale then; nil until it is.
+    private var measured: (pointsPerMeter: Double, windowScale: Double?)?
+    /// The carry of what the pinch under way spawned, from the spawn until
+    /// it's let go.
+    private var handoff: PluckHandoff<String>?
+    /// Whether the trace has said the pinch under way's item is held,
+    /// following the hand.
+    private var notedHeld = false
+    /// The farthest the pinch under way stretched toward breaking its item
+    /// free, and how far it needed, as last seen, for the settle's line.
+    private var heldFarthest: (reach: Double, needs: Double)?
+    /// Whether the pinch under way broke its item free.
+    private var brokeFree = false
 
     /// The item's id, as the last word gave it.
     var itemID: AnyHashable? { setting?.id }
@@ -89,7 +120,7 @@ final class PluckItemDriver {
         let moved = value.translation3D
         let translation = SIMD3(moved.x, moved.y, moved.z)
         lastLocation = value.location3D
-        apply(pinches.dragMoved(translation, pointsPerMeter: setting.pointsPerMeter, at: .now), word: "drag", translation: translation)
+        apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter(setting), at: .now), word: "drag", translation: translation)
     }
 
     /// The pull's drag ended, let go.
@@ -117,6 +148,33 @@ final class PluckItemDriver {
         holdCount?.cancel()
         armCount?.cancel()
         apply(pinches.itemWent(at: .now), word: "item went")
+    }
+
+    // MARK: The item's points to a meter of the hand
+
+    /// The item's points to a meter of the hand's move, measured once a
+    /// pinch: the window's own, as its physical metrics give them, divided
+    /// by the scale the window is drawn at in the space, as visionOS draws a
+    /// window larger the farther away it stands, since the drag reports the
+    /// hand's move in the item's own points, before that scale. So the
+    /// break-free distance is the hand's 2.5 cm wherever the window stands.
+    /// The window's own, with no space to measure the scale in.
+    private func pointsPerMeter(_ setting: Setting) -> Double {
+        if let measured { return measured.pointsPerMeter }
+        let own = setting.ownPointsPerMeter
+        let scale = windowScale()
+        let pointsPerMeter = scale.map { own / $0 } ?? own
+        measured = (pointsPerMeter, scale)
+        return pointsPerMeter
+    }
+
+    /// How much larger than its own size the item's window is drawn in the
+    /// immersive space: its transform's scale across; nil with the space
+    /// closed, or a scale that isn't one.
+    private func windowScale() -> Double? {
+        guard let transform = proxy?.transform(in: .immersiveSpace) else { return nil }
+        let scale = Double(transform.scale.width)
+        return scale.isFinite && scale > 0.01 ? scale : nil
     }
 
     // MARK: The container's words
@@ -224,12 +282,15 @@ final class PluckItemDriver {
             if told.ended == nil {
                 for action in told.actions { perform(action, why: told.why) }
             }
+            showFollow()
             return
         }
         note(word, told, translation: translation, extra: extra)
         for countdown in told.countdowns { run(countdown) }
         for action in told.actions { perform(action, why: told.why) }
+        noteHeld()
         if let ended = told.ended { finish(ended) }
+        showFollow()
     }
 
     /// Handles the item's tap: no tap for a release, the app's tap otherwise.
@@ -241,6 +302,14 @@ final class PluckItemDriver {
         for action in tap.actions { perform(action, why: .releasedByItsTap) }
         if !tap.isRelease { setting?.perform(.tapped) }
         if let ended = tap.ended { finish(ended) }
+        showFollow()
+    }
+
+    /// Draws the lifted item where its tether says, should that have
+    /// changed: following the hand while it's held, at its place otherwise.
+    private func showFollow() {
+        let offset = pinches.follow
+        if follow.offset != offset { follow.offset = offset }
     }
 
     private func perform(_ action: PluckPress.Action, why: PluckReason) {
@@ -258,24 +327,42 @@ final class PluckItemDriver {
             }
         case .pullArmed:
             trace?.event("armed", armedNote(setting))
-        case .beginPull:
-            let position = place(setting)
-            trace?.event("pull began", pluckItemPosition(position))
-            pluckItemLogger.info("The pull of \(setting.title) began at \(pluckItemPosition(position), privacy: .public)")
-            setting.perform(.pullBegan(position))
-        case .movePull:
-            setting.perform(.pullMoved(place(setting)))
-        case .endPull:
-            let position = place(setting)
-            trace?.event("pull ended", pluckItemPosition(position))
-            pluckItemLogger.info("The pull of \(setting.title) landed at \(pluckItemPosition(position), privacy: .public)")
-            setting.perform(.pullEnded(position))
-        case .cancelPull:
-            trace?.event("pull cancelled")
-            setting.perform(.pullCancelled)
+        case .breakFree:
+            let spawn = place(setting, pushedTowardViewer: true)
+            if let spawn, let hand = place(setting, pushedTowardViewer: false) {
+                handoff = PluckHandoff(carrying: setting.title, spawnedAt: spawn, handAt: hand)
+            }
+            brokeFree = true
+            trace?.event("broke free", brokeFreeNote(spawn))
+            pluckItemLogger.info("\(setting.title) broke free, spawning at \(pluckItemPosition(spawn), privacy: .public); the carry takes the pinch from here")
+            setting.perform(.spawned(at: spawn))
+        case .carrySpawned:
+            carryOn(setting)
+        case .releaseSpawned:
+            carryOn(setting)
+            var middle: SIMD3<Float>?
+            var detail = pluckItemPosition(nil)
+            if var carried = handoff {
+                _ = carried.end()
+                middle = carried.middle
+                detail = String(format: "%@, %.2f m from where it spawned", pluckItemPosition(carried.middle), simd_distance(carried.middle, carried.spawnedAt))
+            }
+            handoff = nil
+            trace?.event("released", detail)
+            pluckItemLogger.info("The carry of what \(setting.title) spawned was let go at \(pluckItemPosition(middle), privacy: .public)")
+            setting.perform(.released(at: middle))
+        case .cancelSpawn:
+            handoff = nil
+            trace?.event("spawn cancelled", "what spawned is taken away")
+            setting.perform(.spawnCancelled)
         case .settle:
             let change = setting.model?.settle(setting.id)
-            trace?.event("settle", why.description + (change?.scrollHoldChanged == true ? "; the scroll on again" : ""))
+            var detail = why.description
+            if let held = heldFarthest, !brokeFree {
+                detail += String(format: "; held to %.1f pt of %.1f, not broken free", held.reach, held.needs)
+            }
+            if change?.scrollHoldChanged == true { detail += "; the scroll on again" }
+            trace?.event("settle", detail)
             reportSettled()
         case .stayDown(let stayDown):
             let stillness = pinches.press?.tuning.holdStillness ?? setting.tuning.holdStillness
@@ -286,13 +373,13 @@ final class PluckItemDriver {
         }
     }
 
-    /// What an armed pull needs, and from where, for the trace: the pull's
-    /// distance in the item's points and its rule, from where the pinch
-    /// stood as its item lifted, or as its pull armed, or the touch.
+    /// What breaking free needs, and from where, for the trace: the
+    /// break-free distance in the item's points and its rule, from where the
+    /// pinch stood as its item lifted, or as its pull armed, or the touch.
     private func armedNote(_ setting: Setting) -> String {
-        guard let press = pinches.press else { return "a pull may come out" }
+        guard let press = pinches.press else { return "it may break free" }
         let tuning = press.tuning
-        let needs = String(format: "a pull needs %.1f pt %@", tuning.pullThreshold(pointsPerMeter: setting.pointsPerMeter), pluckItemPullWay(tuning))
+        let needs = String(format: "breaks free at %.1f pt %@", tuning.breakFreeThreshold(pointsPerMeter: pointsPerMeter(setting)), pluckItemPullWay(tuning))
         let point: SIMD3<Double>?
         let moment: String
         switch tuning.pullOrigin {
@@ -306,6 +393,43 @@ final class PluckItemDriver {
         return needs + " from \(pluckItemVector(point)), where it \(moment)"
     }
 
+    /// The moment the item broke free, for the trace: how long after the
+    /// lift, how far the hand had gone of what it needed, and where it
+    /// spawns.
+    private func brokeFreeNote(_ spawn: SIMD3<Float>?) -> String {
+        var parts: [String] = []
+        if let lifted = pinches.liftedAt {
+            parts.append("+\(pluckItemSeconds(.now - lifted)) s after the lift")
+        }
+        if let press = pinches.press, let needs = press.breakFreeAt {
+            parts.append(String(format: "%.1f pt of %.1f", press.farthestStretch, needs))
+        }
+        parts.append("spawns at " + pluckItemPosition(spawn))
+        return parts.joined(separator: ", ")
+    }
+
+    /// Notes, once a pinch, that its lifted item is held, following the
+    /// hand, and keeps how far it has stretched, for the settle's line.
+    private func noteHeld() {
+        guard let stretch = pinches.stretch else { return }
+        let farthest = max(heldFarthest?.reach ?? 0, stretch.reach)
+        heldFarthest = (farthest, stretch.needs)
+        guard !notedHeld else { return }
+        notedHeld = true
+        let drawn = (stretch.follow * stretch.follow).sum().squareRoot()
+        trace?.event("held", String(format: "%.1f pt of %.1f to break free, the item drawn %.1f pt along", stretch.reach, stretch.needs, drawn))
+    }
+
+    /// Hands the drag's last place to the carry of what spawned, and tells
+    /// the app where the carry puts its middle.
+    private func carryOn(_ setting: Setting) {
+        guard var handoff, let hand = place(setting, pushedTowardViewer: false) else { return }
+        for case .carry(_, let middle, let handMoved) in handoff.handMoved(to: hand) {
+            setting.perform(.carried(middle: middle, handMoved: handMoved))
+        }
+        self.handoff = handoff
+    }
+
     /// Tells the app the item settled, once for each lift it was told of.
     private func reportSettled() {
         guard reportedLift else { return }
@@ -313,13 +437,15 @@ final class PluckItemDriver {
         setting?.perform(.settled)
     }
 
-    /// Where what the item pulls out stands in the space: the drag's last
-    /// location, pushed toward the viewer, through the item's transform into
-    /// the immersive space, in meters, y up; nil while it has none, as with
-    /// the space closed.
-    private func place(_ setting: Setting) -> SIMD3<Float>? {
+    /// The drag's last location in the space, through the item's transform
+    /// into the immersive space, in meters, y up: pushed toward the viewer,
+    /// where what the item pulls out spawns; or not, where the hand is,
+    /// whose moves the carry of what spawned follows. Nil while it has none,
+    /// as with the space closed.
+    private func place(_ setting: Setting, pushedTowardViewer: Bool) -> SIMD3<Float>? {
         guard let location = lastLocation, let transform = proxy?.transform(in: .immersiveSpace) else { return nil }
-        let pushed = Point3D(x: location.x, y: location.y, z: location.z + setting.tuning.pushTowardViewer)
+        let push = pushedTowardViewer ? setting.tuning.pushTowardViewer : 0
+        let pushed = Point3D(x: location.x, y: location.y, z: location.z + push)
         let meters = setting.metrics.convert(pushed.applying(transform), to: .meters)
         return SIMD3(Float(meters.x), Float(-meters.y), Float(meters.z))
     }
@@ -329,21 +455,27 @@ final class PluckItemDriver {
     private func beginTrace(with word: String) {
         guard let setting else { return }
         lastDragNote = nil
+        notedHeld = false
+        heldFarthest = nil
+        brokeFree = false
+        let pointsPerMeter = pointsPerMeter(setting)
         trace = setting.recorder?.begin("Pluck", title: "Pinch on \(setting.title)")
-        trace?.event("tuning", pluckItemTuningLine(setting.tuning, pointsPerMeter: setting.pointsPerMeter))
+        trace?.event("tuning", pluckItemTuningLine(setting.tuning, pointsPerMeter: pointsPerMeter, windowScale: measured?.windowScale))
     }
 
     /// Notes a word in the trace, with why it did what it did. A drag's
     /// words are noted as they begin a pinch, do something, or give another
     /// kind of reason, and otherwise a tenth of a second apart, so the
-    /// timeline stays readable.
+    /// timeline stays readable; a move handed to the carry of what spawned
+    /// does nothing of the pluck's own, so it's noted no more often.
     private func note(_ word: String, _ told: PluckPinches.Told, translation: SIMD3<Double>?, extra: String?) {
         guard let trace else { return }
         var detail = told.why.description
         if let translation {
             let now = ContinuousClock.now
             let name = told.why.name
-            let isNews = told.beganAPinch || !told.actions.isEmpty || lastDragNote?.name != name
+            let doesSomething = told.actions.contains { $0 != .carrySpawned }
+            let isNews = told.beganAPinch || doesSomething || lastDragNote?.name != name
             if !isNews, let last = lastDragNote, now - last.at < .milliseconds(100) { return }
             lastDragNote = (name, now)
             detail = "\(pluckItemVector(translation)): \(detail)"
@@ -367,6 +499,8 @@ final class PluckItemDriver {
         }
         trace = nil
         lastDragNote = nil
+        measured = nil
+        handoff = nil
         setting?.model?.pinchEnded(by: self)
     }
 }
@@ -408,20 +542,27 @@ private func pluckItemPullOrigin(_ origin: PluckPullOrigin) -> String {
     }
 }
 
-/// The tuning a pinch began with, on one line: what gives the hold up, when
-/// the pull arms, and what pulls, in centimeters and the item's points.
-private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double) -> String {
+/// The tuning a pinch began with, on one line: what gives the hold up, how
+/// the lifted item follows, when and how far it breaks free, in centimeters
+/// and the item's points, and the points to a meter of the hand it was
+/// measured at.
+private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double, windowScale: Double?) -> String {
     let holdGivenUp = tuning.holdStillness <= tuning.dragStartDistance
         ? "the drag's first word"
         : String(format: "a move of %.0f pt", tuning.holdStillness)
+    let follows = tuning.tether.follows
+        ? String(format: "follows %.2f of the hand toward %.0f pt", tuning.followShare, tuning.followCap)
+        : "follows nothing"
+    let scale = windowScale.map { String(format: "the window at %.2f×", $0) } ?? "the window's scale unknown, taken as its own size"
     return String(
-        format: "hold %.2f s, given up by a scroll or %@; drag from %.0f pt; arms %.2f s after; pull %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@",
-        tuning.holdDuration, holdGivenUp, tuning.dragStartDistance, tuning.pullArmDelay,
-        tuning.pullDistance * 100, tuning.pullThreshold(pointsPerMeter: pointsPerMeter), pluckItemPullWay(tuning),
+        format: "hold %.2f s, given up by a scroll or %@; drag from %.0f pt; lifted, %@; arms %.2f s after the lift; breaks free at %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@; %.0f pt to a meter of the hand, %@",
+        tuning.holdDuration, holdGivenUp, tuning.dragStartDistance, follows, tuning.pullArmDelay,
+        tuning.breakFreeDistance * 100, tuning.breakFreeThreshold(pointsPerMeter: pointsPerMeter), pluckItemPullWay(tuning),
         pluckItemPullOrigin(tuning.pullOrigin),
         tuning.stopsScrollUnderLiftedItem ? "stops under a lift" : "goes on",
         tuning.pressEndSettlesLiftedItem ? "settles a lift" : "keeps a lift up",
-        tuning.holdsFromTheDrag ? "drag" : "press"
+        tuning.holdsFromTheDrag ? "drag" : "press",
+        pointsPerMeter, scale
     )
 }
 
@@ -434,11 +575,14 @@ private func pluckItemAccountLine(_ account: PluckPinches.Account) -> String {
     }
     add("held", account.heldAfter)
     add("armed", account.armedAfter)
-    add("pulled", account.pulledAfter)
+    add("broke free", account.pulledAfter)
     add("press up", account.pressEndedAfter)
     add("settled", account.settledAfter)
     add("drag spoke", account.dragReportedAfter)
     if let stayed = account.stayedDown { parts.append("stayed down: \(stayed.rawValue)") }
+    if let needs = account.breakFreeAt {
+        parts.append(String(format: "stretched %.1f of %.1f pt", account.farthestStretch, needs))
+    }
     parts.append(String(format: "farthest %.1f pt, %.1f before the hold", account.farthest, account.farthestBeforeHold))
     return parts.joined(separator: ", ")
 }

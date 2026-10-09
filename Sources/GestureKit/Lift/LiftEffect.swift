@@ -6,7 +6,8 @@ import SwiftUI
 /// lifted out of its grid does: scaled up a little about its middle and
 /// brought toward the viewer, on a spring that overshoots a little as it
 /// pops out, over a soft shadow left lying where it was, and above its
-/// neighbors while it's up and coming down.
+/// neighbors while it's up and coming down; and, as the pinch holding it
+/// tugs it, drawn a little way along with the hand (`liftFollowEffect(_:)`).
 ///
 /// Only the drawing moves (`liftEffect(_:style:)`), so a gesture on a view
 /// around it, and a geometry reader around it, measure the same points
@@ -43,6 +44,11 @@ public struct LiftStyle: Sendable, Equatable {
     /// to bring it all the way down first.
     public static var settleTime: Duration { .seconds(0.6) }
 
+    /// The spring a lifted view follows a pinch's tug on: a tenth of a second
+    /// and a little more, with no bounce, so it smooths the drag's steps, as
+    /// the 4 pt ones its depth comes in, without lagging the hand.
+    public static var followSpring: Animation { .spring(duration: 0.12, bounce: 0) }
+
     /// The shadow: black at this opacity, blurred, dropped below the view,
     /// as big as it shows lifted, so it shows mostly below it, a little at
     /// its sides, and not above it.
@@ -69,6 +75,19 @@ extension View {
             .offset(z: isLifted ? style.depth : 0)
             .animation(isLifted ? LiftStyle.springUp : LiftStyle.springDown, value: isLifted)
             .modifier(LiftShadowModifier(isLifted: isLifted && style.castsShadow, scale: style.scale))
+    }
+
+    /// Draws this lifted view `offset` from where it stands lifted, in its
+    /// points, x across, y down, z toward the viewer, as a pinch holding it
+    /// tugs it: following on `LiftStyle.followSpring`, and back to its place
+    /// on the spring without the bounce as the offset goes to zero, as when
+    /// it breaks free of the pinch's tether or settles. Only the drawing
+    /// moves. Apply it inside `liftEffect(_:style:)`, so the lift's shadow
+    /// stays lying where the view was.
+    public func liftFollowEffect(_ offset: SIMD3<Double>) -> some View {
+        self.offset(x: CGFloat(offset.x), y: CGFloat(offset.y))
+            .offset(z: CGFloat(offset.z))
+            .animation(offset == .zero ? LiftStyle.springDown : LiftStyle.followSpring, value: offset)
     }
 
     /// Raises this view above its neighbors, in a grid or a stack, while
