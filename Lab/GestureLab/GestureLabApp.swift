@@ -25,6 +25,14 @@ struct GestureLabApp: App {
         }
         .defaultSize(width: 1500, height: 950)
 
+        // A station's own window, for a gesture that lives in a window: the
+        // size of a library window, its trace beside it.
+        WindowGroup(id: LabModel.stationWindowID, for: String.self) { $stationID in
+            StationOwnWindow(lab: lab, stationID: stationID)
+        }
+        .defaultSize(width: 1200, height: 820)
+        .windowResizability(.contentMinSize)
+
         ImmersiveSpace(id: LabModel.spaceID) {
             LabSpaceView(lab: lab)
         }

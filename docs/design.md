@@ -61,6 +61,12 @@ space, opened at launch.
 - **The window** lists the stations, each with a one-line summary. For the
   one chosen it shows the station's own window content (how to try it, and
   anything it shows as it's tried), its tuning panel, and its trace.
+- **A station's own window**, for a gesture that lives in a window, as an
+  item in a scrolling grid does: the lab opens it beside its own as the
+  station is chosen, with a button to open it again, and closes it as
+  another is chosen. It shows the station's own window content edge to edge,
+  with no scrolling column around it, and its trace in an ornament beside it,
+  so the trace reads while the window is pinched.
 - **The space** shows the chosen station's space content, a `RealityView`
   with attachments, standing around a point a meter ahead at about eye
   height (`LabSpace.front`), made afresh as another station is chosen.

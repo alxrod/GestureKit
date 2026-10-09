@@ -28,11 +28,18 @@ import SwiftUI
 ///         var spaceContent: some View { CarrySpace(station: self) }
 ///         var tuningContent: some View { TuningPanel(tuning, title: "Carry") }
 ///     }
+///
+/// A station whose gesture lives in a window, as an item in a scrolling
+/// grid does, gives that window its own: a title (`ownWindowTitle`) and its
+/// content (`ownWindowContent`), which the lab opens beside its own window as
+/// the station is chosen, with the station's trace in an ornament beside it,
+/// and closes as another is chosen.
 @MainActor
 protocol LabStation: AnyObject {
     associatedtype WindowContent: View
     associatedtype SpaceContent: View
     associatedtype TuningContent: View
+    associatedtype OwnWindowContent: View = EmptyView
 
     /// Stable, in lowercase words joined by hyphens, "trace-check": what
     /// the lab remembers the chosen station by, and the end of its tuning's
@@ -59,6 +66,14 @@ protocol LabStation: AnyObject {
     /// Its tuning panels, a `TuningPanel` for each tuning it has.
     @ViewBuilder var tuningContent: TuningContent { get }
 
+    /// The title of the window of its own the lab opens as it's chosen, in a
+    /// word or two; nil, as for most stations, for none.
+    var ownWindowTitle: String? { get }
+
+    /// What its own window shows, edge to edge: a gesture that lives in a
+    /// window, away from the lab window's scrolling column.
+    @ViewBuilder var ownWindowContent: OwnWindowContent { get }
+
     /// Registers every RealityKit component and system its space uses, its
     /// own and GestureKit's, as the app starts, before anything uses them.
     static func registerComponents()
@@ -66,6 +81,11 @@ protocol LabStation: AnyObject {
 
 extension LabStation {
     static func registerComponents() {}
+
+    var ownWindowTitle: String? { nil }
+
+    /// `ownWindowContent`, whatever its type, for its own window.
+    var ownWindowView: AnyView { AnyView(ownWindowContent) }
 
     /// `windowContent`, whatever its type, for the window.
     var windowView: AnyView { AnyView(windowContent) }
@@ -75,4 +95,8 @@ extension LabStation {
 
     /// `tuningContent`, whatever its type, for the window.
     var tuningView: AnyView { AnyView(tuningContent) }
+}
+
+extension LabStation where OwnWindowContent == EmptyView {
+    var ownWindowContent: EmptyView { EmptyView() }
 }
