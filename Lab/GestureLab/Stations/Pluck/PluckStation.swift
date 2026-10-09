@@ -182,6 +182,9 @@ private struct PluckLabGridWindow: View {
                 }
             }
         }
+        #if DEBUG
+        .labLoadScrolls()
+        #endif
         .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
         .ignoresSafeArea()
         .id(station.spaceAppearances)
