@@ -83,17 +83,17 @@ enum LabLoad: String, CaseIterable {
         let detail = "(3.0 across, -12.0 down, 30.0 toward you) pt: still within its hold's stillness"
         for number in 1...30 {
             let trace = recorder.begin("Load", title: "Earlier pinch \(number)")
-            for _ in 0..<15 { trace.event("drag", detail) }
-            trace.finish("tap")
+            for _ in 0..<15 { trace?.event("drag", detail) }
+            trace?.finish("tap")
         }
         var trace = recorder.begin("Load", title: "Pinch under way")
         var written = 0
         while !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(50))
-            trace.event("drag", detail)
+            trace?.event("drag", detail, measure: TraceMeasure(Double(written % 15) * 2, "pt", decimals: 1))
             written += 1
             if written % 15 == 0 {
-                trace.finish("pull")
+                trace?.finish("pull")
                 trace = recorder.begin("Load", title: "Pinch under way")
             }
         }

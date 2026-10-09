@@ -36,9 +36,20 @@ struct LabWindow: View {
             }
             .navigationTitle("GestureLab")
         } detail: {
-            StationDetail(station: lab.chosen, openOwnWindow: { openOwnWindow(of: lab.chosenID) })
+            StationDetail(
+                station: lab.chosen,
+                traceSwitch: lab.traceSwitch(of: lab.chosenID),
+                openOwnWindow: { openOwnWindow(of: lab.chosenID) }
+            )
                 .id(lab.chosenID)
                 .toolbar {
+                    ToolbarItem {
+                        Toggle(isOn: Binding(get: { lab.tracesAnything }, set: { lab.tracesAnything = $0 })) {
+                            Label("Trace", systemImage: "list.bullet.rectangle")
+                        }
+                        .toggleStyle(.button)
+                        .help("Trace what every station's gestures do; off, nothing traces")
+                    }
                     if !lab.isSpaceOpen {
                         ToolbarItem {
                             Button("Open the space", systemImage: "cube.transparent") {
@@ -90,6 +101,7 @@ struct LabWindow: View {
 /// its trace beside them, filling the rest.
 private struct StationDetail: View {
     let station: any LabStation
+    let traceSwitch: Binding<Bool>?
     let openOwnWindow: () -> Void
 
     var body: some View {
@@ -111,7 +123,7 @@ private struct StationDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: 540)
-            TraceView(station.trace)
+            TraceView(station.trace, isOn: traceSwitch)
         }
         .padding(24)
     }
@@ -129,7 +141,7 @@ struct StationOwnWindow: View {
         if let id = stationID, let station = lab.station(withID: id), station.ownWindowTitle != nil {
             station.ownWindowView
                 .ornament(attachmentAnchor: .scene(.trailing), contentAlignment: .leading) {
-                    TraceView(station.trace)
+                    TraceView(station.trace, isOn: lab.traceSwitch(of: id))
                         .frame(width: 560, height: 820)
                         .padding(.leading, 24)
                 }
@@ -138,5 +150,14 @@ struct StationOwnWindow: View {
                 .font(.system(size: 22))
                 .padding(40)
         }
+    }
+}
+
+extension LabModel {
+    /// The station `id`'s own trace switch, for its trace's header; nil
+    /// while the whole lab's tracing is off, which the trace then says.
+    func traceSwitch(of id: String) -> Binding<Bool>? {
+        guard tracesAnything else { return nil }
+        return Binding(get: { self.traces(station: id) }, set: { self.setTraces($0, station: id) })
     }
 }

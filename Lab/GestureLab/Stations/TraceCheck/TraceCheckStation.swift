@@ -43,7 +43,7 @@ final class TraceCheckStation: LabStation {
     @ObservationIgnored private var press: Press?
 
     private struct Press {
-        let trace: InteractionTrace
+        let trace: InteractionTrace?
         let began: SIMD3<Float>
         let touched: SIMD3<Float>
         var wentFar = false
@@ -66,18 +66,18 @@ final class TraceCheckStation: LabStation {
     /// as when the system cancels a drag, so it ends as nothing first.
     func pinchMoved(to point: SIMD3<Float>, from start: SIMD3<Float>) {
         if let press, simd_distance(press.began, start) > 0.0001 {
-            press.trace.finish("nothing: its end went unseen")
+            press.trace?.finish("nothing: its end went unseen")
             self.press = nil
         }
         guard var press else {
             let trace = self.trace.begin(title, title: "Pinch on the cube")
-            trace.event("touch", "size \(formatted(tuning.tuning.size)) m")
+            trace?.event("touch", "size \(formatted(tuning.tuning.size)) m")
             self.press = Press(trace: trace, began: start, touched: point)
             return
         }
         if !press.wentFar, simd_distance(point, press.touched) >= tapReach {
             press.wentFar = true
-            press.trace.event("moved", "past \(formatted(Double(tapReach) * 100, decimals: 0)) cm")
+            press.trace?.event("moved", "past \(formatted(Double(tapReach) * 100, decimals: 0)) cm")
             self.press = press
         }
     }
@@ -87,12 +87,12 @@ final class TraceCheckStation: LabStation {
         guard let press else { return }
         self.press = nil
         let moved = simd_distance(point, press.touched)
-        press.trace.event("release", "moved \(formatted(Double(moved) * 100, decimals: 1)) cm")
+        press.trace?.event("release", "moved \(formatted(Double(moved) * 100, decimals: 1)) cm")
         if moved < tapReach {
             taps += 1
-            press.trace.finish("tap")
+            press.trace?.finish("tap")
         } else {
-            press.trace.finish("drag")
+            press.trace?.finish("drag")
         }
     }
 
