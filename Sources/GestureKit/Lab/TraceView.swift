@@ -7,6 +7,13 @@ import SwiftUI
 /// a mark at each event's time, and each event's time, name, and detail.
 /// Large, white on black, so a screen recording made on the headset reads
 /// it, and it updates as the recorder does.
+///
+/// It takes all the room it's offered, whatever it shows, and lays out what
+/// it shows in that room alone, so an event, which changes what it shows,
+/// lays out nothing beside it again. Laid out as an ordinary view, it had
+/// each event lay out again whatever stood beside it in a stack: in
+/// GestureLab's window, every slider of the station's tuning, which made an
+/// event cost three times what the trace itself did.
 public struct TraceView: View {
     private let recorder: TraceRecorder
     private let title: String
@@ -18,6 +25,19 @@ public struct TraceView: View {
     }
 
     public var body: some View {
+        Color.clear
+            .overlay(alignment: .topLeading) {
+                TraceViewContent(recorder: recorder, title: title)
+            }
+    }
+}
+
+/// What a `TraceView` shows, laid out in the room the view takes.
+private struct TraceViewContent: View {
+    let recorder: TraceRecorder
+    let title: String
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
@@ -36,6 +56,7 @@ public struct TraceView: View {
                     LazyVStack(alignment: .leading, spacing: 14) {
                         ForEach(recorder.interactions) { interaction in
                             TraceInteractionTimeline(interaction: interaction)
+                                .equatable()
                         }
                     }
                 }
@@ -48,9 +69,19 @@ public struct TraceView: View {
     }
 }
 
-/// One interaction in the trace.
-private struct TraceInteractionTimeline: View {
+/// One interaction in the trace, drawn again only as it changes: an event
+/// added, or its outcome given, which is all a `TraceLog` changes of an
+/// interaction, so an event redraws its own interaction's timeline and no
+/// other.
+private struct TraceInteractionTimeline: View, Equatable {
     let interaction: TracedInteraction
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.interaction.id == rhs.interaction.id
+            && lhs.interaction.events.count == rhs.interaction.events.count
+            && lhs.interaction.outcome == rhs.interaction.outcome
+            && lhs.interaction.lasted == rhs.interaction.lasted
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
