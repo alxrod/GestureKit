@@ -12,9 +12,10 @@ struct PluckLabCard: Identifiable, Equatable {
 }
 
 /// The pluck's station: a grid of numbered items in a window of its own, as
-/// a library's, each pluckable, with nothing scrolling around it. A pinch that moves first scrolls it; held
-/// still, an item lifts and the scroll stops; a moment later, a pull toward
-/// you takes it out as a card that stands in the room where it's let go.
+/// a library's, each pluckable, with nothing scrolling around it. A pinch
+/// that scrolls it is its scroll; held still, an item lifts and the scroll
+/// stops; a moment later, a small move any way takes it out as a card that
+/// stands in the room where it's let go.
 /// Every pinch is traced, each word with why it did what it did, and the
 /// grid's own scrolls apart, so one pinch's timeline says whether a scroll
 /// lifted, whether the press went at the lift, and what the pull rule made
@@ -147,7 +148,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that moves first is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. A moment later pull toward you, and it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. A moment later move your hand any way, about half a centimeter, and it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
