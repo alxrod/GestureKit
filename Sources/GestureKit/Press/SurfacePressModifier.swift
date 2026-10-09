@@ -283,6 +283,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
                 guard press != nil else { return }
                 pressCancelled(because: "its view went")
             }
+            #if DEBUG
+            .modifier(PinchStandInListener(adapter: .surfacePress) { standInStep($0) })
+            #endif
     }
 
     // MARK: The press
@@ -293,23 +296,23 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .simultaneously(with: DragGesture(minimumDistance: 0, coordinateSpace: .immersiveSpace))
             .updating($isPressing) { _, isPressing, _ in isPressing = true }
-            .onChanged { pressChanged($0) }
-            .onEnded { pressEnded($0) }
+            .onChanged { pressChanged(SurfacePressWord($0)) }
+            .onEnded { pressEnded(SurfacePressWord($0)) }
     }
 
     /// Begins the pinch on its first change, where it touched, then tells it
     /// where the pinch is at each.
-    private func pressChanged(_ value: SimultaneousGesture<DragGesture, DragGesture>.Value) {
-        guard let local = value.first, !gaveWayToMagnify else { return }
+    private func pressChanged(_ word: SurfacePressWord?) {
+        guard let word, !gaveWayToMagnify else { return }
         if press == nil {
-            touchPoint = local.startLocation
-            pressBegan(at: along(local.startLocation.x), hand: value.second.map { handPlace($0.startLocation3D) })
+            touchPoint = word.start
+            pressBegan(at: along(word.start.x), hand: word.handStart.map { handPlace($0) })
         }
-        let moved = local.translation3D
+        let moved = word.translation
         let sample = SurfacePress.Sample(
-            along: along(local.location.x),
+            along: along(word.location.x),
             moved: SIMD3(moved.x, moved.y, moved.z),
-            hand: value.second.map { handPlace($0.location3D) }
+            hand: word.hand.map { handPlace($0) }
         )
         guard let actions = press?.move(sample) else { return }
         handle(actions)
@@ -396,17 +399,17 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     /// The pinch was released: one whose first change never came begins
     /// here, so its tap isn't lost, but the release of a pinch already
     /// cancelled is ignored.
-    private func pressEnded(_ value: SimultaneousGesture<DragGesture, DragGesture>.Value) {
+    private func pressEnded(_ word: SurfacePressWord?) {
         guard !gaveWayToMagnify else {
             gaveWayToMagnify = false
             return
         }
-        if press == nil, let local = value.first {
-            if let cancelledTouchPoint, local.startLocation == cancelledTouchPoint {
+        if press == nil, let word {
+            if let cancelledTouchPoint, word.start == cancelledTouchPoint {
                 self.cancelledTouchPoint = nil
                 return
             }
-            pressChanged(value)
+            pressChanged(word)
         }
         guard var ended = press else { return }
         let stage = ended.stage
@@ -565,6 +568,19 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         String(format: "%.1f cm", Double(physicalMetrics.convert(CGFloat(points), to: .meters)) * 100)
     }
 
+    #if DEBUG
+    /// A step of the hand's stand-in (`PinchStandIn`), as the press's drags
+    /// would tell it: touched 100 pt along, 20 pt down, and moved as it says.
+    private func standInStep(_ step: PinchStandIn.Step) {
+        switch step {
+        case .moved(let points, _, _):
+            pressChanged(SurfacePressWord(standingInFor: points))
+        case .released:
+            pressEnded(press == nil ? nil : SurfacePressWord(standingInFor: .zero))
+        }
+    }
+    #endif
+
     // MARK: Two hands
 
     /// A two-handed pinch, which a single hand never makes, beside the press,
@@ -624,6 +640,41 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         let meters = physicalMetrics.convert(point, to: .meters)
         return SIMD3(meters.x, -meters.y, meters.z)
     }
+}
+
+/// One word of a press's two drags, as the press reads it: where the pinch
+/// touched and is in the view's points, how far it has moved, and where the
+/// hand began and is in the immersive space's points, once the space's drag
+/// has said.
+private struct SurfacePressWord {
+    let start: CGPoint
+    let location: CGPoint
+    let translation: Vector3D
+    let handStart: Point3D?
+    let hand: Point3D?
+
+    /// The word the two drags' value says; nil before the view's drag has
+    /// said anything.
+    init?(_ value: SimultaneousGesture<DragGesture, DragGesture>.Value) {
+        guard let local = value.first else { return nil }
+        start = local.startLocation
+        location = local.location
+        translation = local.translation3D
+        handStart = value.second?.startLocation3D
+        hand = value.second?.location3D
+    }
+
+    #if DEBUG
+    /// A stand-in's word: touched 100 pt along and 20 pt down, the hand at
+    /// the space's origin, and moved `points` since.
+    init(standingInFor points: SIMD3<Double>) {
+        start = CGPoint(x: 100, y: 20)
+        location = CGPoint(x: 100 + points.x, y: 20 + points.y)
+        translation = Vector3D(x: points.x, y: points.y, z: points.z)
+        handStart = .zero
+        hand = Point3D(x: points.x, y: points.y, z: points.z)
+    }
+    #endif
 }
 
 /// `meters` for a trace: "0.214 m".

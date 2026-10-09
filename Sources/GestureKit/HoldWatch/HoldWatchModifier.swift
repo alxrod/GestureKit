@@ -101,13 +101,21 @@ private struct HoldWatchModifier: ViewModifier {
                 trace?.event("drag began", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
             }
             .onDisappear { pinchEnded() }
+            #if DEBUG
+            .modifier(PinchStandInListener(adapter: .holdWatch) { step in
+                switch step {
+                case .moved(let points, _, _): pinchMoved(Vector3D(x: points.x, y: points.y, z: points.z))
+                case .released: pinchEnded()
+                }
+            })
+            #endif
     }
 
     /// Every pinch, from its touch, standing beside the view's own gestures.
     private var watchGesture: some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .updating($isPressing) { _, isPressing, _ in isPressing = true }
-            .onChanged { pinchMoved($0) }
+            .onChanged { pinchMoved($0.translation3D) }
             .onEnded { _ in pinchEnded() }
     }
 
@@ -118,11 +126,10 @@ private struct HoldWatchModifier: ViewModifier {
 
     /// The pinch touched, on its first change, or moved: the watch is told
     /// how far it's gone, which gives the hold up once it's too far.
-    private func pinchMoved(_ value: DragGesture.Value) {
+    private func pinchMoved(_ moved: Vector3D) {
         if watch == nil {
             pinchBegan()
         }
-        let moved = value.translation3D
         guard var watched = watch else { return }
         let gaveUp = watched.move(SIMD3(moved.x, moved.y, moved.z))
         watch = watched

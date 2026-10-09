@@ -137,6 +137,17 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
             .onDisappear {
                 pinchEnded(how: "ended as its view went")
             }
+            #if DEBUG
+            .modifier(PinchStandInListener(adapter: .grabHandleCarry) { step in
+                switch step {
+                case .moved(let points, let meters, let handle):
+                    guard let handle else { return }
+                    pinchChanged(on: handle, distance: (points * points).sum().squareRoot(), translation: meters)
+                case .released:
+                    pinchEnded(how: "released")
+                }
+            })
+            #endif
     }
 
     /// Tells the pinch under way how far it has moved, beginning one on its
@@ -153,6 +164,12 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
         } else {
             translation = value.convert(value.translation3D, from: .local, to: .scene)
         }
+        pinchChanged(on: handle, distance: distance, translation: translation)
+    }
+
+    /// Tells the pinch under way on `handle` it has moved `distance` points
+    /// from its touch, `translation` in the carried thing's parent's frame.
+    private func pinchChanged(on handle: Entity, distance: Double, translation: SIMD3<Float>) {
         var pinch = underWay ?? begin(on: handle)
         if distance.isFinite { pinch.farthest = max(pinch.farthest, distance) }
         let actions = pinch.pinch.move(distance: distance, translation: translation) { grab(handle) }
