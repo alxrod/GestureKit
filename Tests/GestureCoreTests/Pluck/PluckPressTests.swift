@@ -25,7 +25,7 @@ import Testing
     }
 
     @Test func thePullsDistanceIs27PointsAtTheTestsScale() {
-        #expect(PluckTuning().pullThreshold(pointsPerMeter: Self.pointsPerMeter) == 27)
+        #expect(PluckTuning.firstShipped.pullThreshold(pointsPerMeter: Self.pointsPerMeter) == 27)
     }
 
     @Test func aPinchHeldStillLifts() {
@@ -56,7 +56,7 @@ import Testing
         var press = PluckPress(tuning: .firstShipped)
         #expect(moved(&press, 0, 40, 5) == [.stayDown(.movedFirst)])
         let distance: Double = (1600 + 25 as Double).squareRoot()
-        #expect(press.why == .movedFirst(distance: distance))
+        #expect(press.why == .movedFirst(distance: distance, stillness: 15))
         #expect(press.stayedDown == .movedFirst)
         #expect(press.holdFired(asTheContainerScrolled: false) == [])
         #expect(press.why == .toldAlready)
@@ -98,7 +98,7 @@ import Testing
         #expect(press.isArmed)
         #expect(moved(&press, 5, 0, 61) == [.beginPull])
         #expect(press.isPulling)
-        #expect(press.why == .pulled(PluckPullJudgement(depth: 61, drift: 5, threshold: 27, verdict: .pulls)))
+        #expect(press.why == .pulled(PluckPullJudgement(depth: 61, drift: 5, threshold: 27, verdict: .pulls, origin: .touch)))
     }
 
     /// The pull arms once, and only on a lifted item.
@@ -140,10 +140,10 @@ import Testing
     @Test func aMoveTurnedDownSaysWhy() {
         var slanted = armed()
         _ = moved(&slanted, 120, 0, 30)
-        #expect(slanted.why == .notAPull(PluckPullJudgement(depth: 30, drift: 120, threshold: 27, verdict: .tooSlanted)))
+        #expect(slanted.why == .notAPull(PluckPullJudgement(depth: 30, drift: 120, threshold: 27, verdict: .tooSlanted, origin: .touch)))
         var shallow = armed()
         _ = moved(&shallow, 0, 0, 12)
-        #expect(shallow.why == .notAPull(PluckPullJudgement(depth: 12, drift: 0, threshold: 27, verdict: .tooShallow)))
+        #expect(shallow.why == .notAPull(PluckPullJudgement(depth: 12, drift: 0, threshold: 27, verdict: .tooShallow, origin: .touch)))
     }
 
     /// A lifted pinch moved across the container, up, or into it pulls

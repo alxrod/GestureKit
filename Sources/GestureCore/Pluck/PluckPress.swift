@@ -9,12 +9,14 @@
 /// nothing until the pinch has moved `PluckTuning.dragStartDistance` from
 /// where it touched, then says where it is at each move.
 ///
-/// - **A move first is a scroll.** A pinch the drag reports moving past the
-///   hold's stillness before its hold is the container's scroll, or
-///   nothing, and lifts and pulls nothing for the rest of the pinch,
-///   however it moves after (`StayDown.movedFirst`). So does one whose
-///   container scrolled (`StayDown.containerScrolled`). A quick pinch
-///   yanked toward the viewer pulls nothing.
+/// - **A scroll first is a scroll.** A pinch whose container scrolled
+///   during it, as its scroll view says (`StayDown.containerScrolled`), is
+///   the container's scroll, and lifts and pulls nothing for the rest of
+///   the pinch, however it moves after. So is one the drag reports moving
+///   past the hold's stillness before its hold, 40 pt by default
+///   (`StayDown.movedFirst`), so a quick pinch yanked toward the viewer
+///   pulls nothing. The drag's first word alone isn't such a move, as a
+///   hand that has just pinched settles about 15 pt, the drag's start.
 /// - **A hold lifts.** Held `holdDuration`, its container not having
 ///   scrolled, the item lifts (`Action.lift`), and, as the tuning says, its
 ///   container's scroll stops under it until it settles
@@ -22,10 +24,13 @@
 /// - **Then the pull arms**, `pullArmDelay` after the lift (`armPull()`).
 ///   Between the lift and then, a move neither pulls nor scrolls.
 /// - **An armed pull** comes out with the first move the pull rule takes,
-///   judged from where the pinch touched, so a hand already on its way out
-///   catches up as the pull arms (`PluckPullRule`). A move it turns down
-///   pulls nothing, and the item stays up. A pull moves with its drag; one
-///   pinch pulls once.
+///   by default 6 mm any way from where the pinch stood as the pull armed
+///   (`armedAt`), so a hand that drifted during the hold doesn't pull the
+///   instant it arms; or, as the tuning says, from where it touched, so a
+///   hand already on its way out catches up as the pull arms
+///   (`PluckPullRule`, `PluckPullOrigin`). A move it turns down pulls
+///   nothing, and the item stays up. A pull moves with its drag; one pinch
+///   pulls once.
 /// - **The item settles** as the pinch is let go: as its drag ends, or is
 ///   cancelled, if the drag has spoken; else as the hold's press ends,
 ///   unless the tuning keeps it up then (`pressEndSettlesLiftedItem`). The
@@ -41,7 +46,8 @@ public struct PluckPress: Equatable, Sendable {
     /// Why a pinch's item stays down, lifting and pulling nothing.
     public enum StayDown: String, Equatable, Sendable, Codable {
         /// The pull's drag said the pinch moved past the hold's stillness
-        /// before its hold came: a scroll, or nothing.
+        /// before its hold came: a yank, or a scroll the container's scroll
+        /// view hasn't said it makes.
         case movedFirst
         /// Its container scrolled during the pinch, as one that caught it
         /// coasting.
@@ -82,8 +88,17 @@ public struct PluckPress: Equatable, Sendable {
     /// Whether it has pulled.
     public private(set) var hasPulled = false
     /// Whether the pull's drag has said it moved past the hold's stillness,
-    /// at any time; at the default stillness, whether it has spoken at all.
+    /// at any time; at a stillness no greater than the drag's start, whether
+    /// it has spoken at all.
     public private(set) var hasMoved = false
+    /// Where the pull's drag last said the pinch is, from where it touched,
+    /// in the item's points; nil until it speaks.
+    public private(set) var dragTranslation: SIMD3<Double>?
+    /// Where the pinch stood as its pull armed, from where it touched, in
+    /// the item's points: the drag's last word then, or zero, the touch,
+    /// should the drag not have spoken by then, since the pinch stood within
+    /// the drag's start of the touch. Nil until the pull arms.
+    public private(set) var armedAt: SIMD3<Double>?
     /// Whether the pull's drag has the pinch: it has spoken, and not yet
     /// ended or been cancelled.
     public private(set) var isDragging = false
@@ -141,6 +156,7 @@ public struct PluckPress: Equatable, Sendable {
             return []
         }
         isArmed = true
+        armedAt = dragTranslation ?? .zero
         why = .armed
         return [.pullArmed]
     }
@@ -149,7 +165,8 @@ public struct PluckPress: Equatable, Sendable {
     /// the item's points, where the caller measures `pointsPerMeter`: before
     /// the hold, past the stillness, the pinch is a scroll for good; lifted,
     /// nothing until the pull arms; armed, a pull begins once the pull rule
-    /// takes the move, and moves with the drag after. A move that isn't a
+    /// takes the move, from where the pinch stood as it armed or from the
+    /// touch, as tuned, and moves with the drag after. A move that isn't a
     /// number moves nothing.
     public mutating func dragMoved(_ translation: SIMD3<Double>, pointsPerMeter: Double) -> [Action] {
         isDragging = true
@@ -157,6 +174,7 @@ public struct PluckPress: Equatable, Sendable {
             why = .notANumber
             return []
         }
+        dragTranslation = translation
         let distance = (translation * translation).sum().squareRoot()
         let breaksStillness = tuning.breaksStillness(distance)
         if breaksStillness {
@@ -168,13 +186,13 @@ public struct PluckPress: Equatable, Sendable {
         }
         if !liftedByHold, stayedDown == nil {
             guard breaksStillness else {
-                why = .withinStillness(distance: distance)
+                why = .withinStillness(distance: distance, stillness: tuning.holdStillness)
                 return []
             }
             // Moved before its hold: the container's scroll, for the rest
             // of the pinch.
             stayedDown = .movedFirst
-            why = .movedFirst(distance: distance)
+            why = .movedFirst(distance: distance, stillness: tuning.holdStillness)
             return [.stayDown(.movedFirst)]
         }
         if let stayedDown {
@@ -193,7 +211,7 @@ public struct PluckPress: Equatable, Sendable {
             why = .notArmedYet
             return []
         }
-        let judgement = tuning.judgePull(translation, pointsPerMeter: pointsPerMeter)
+        let judgement = tuning.judgePull(translation, armedAt: armedAt ?? .zero, pointsPerMeter: pointsPerMeter)
         guard judgement.isPull else {
             why = .notAPull(judgement)
             return []
