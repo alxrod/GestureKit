@@ -6,15 +6,20 @@ import Testing
 @Suite struct PluckPullRuleTests {
     let threshold = 27.0
 
-    // MARK: Out of the plane, the default: 2 cm toward the viewer, drifting
-    // across the container at most twice as far as it comes.
+    // MARK: Out of the plane, as the pluck first shipped: 2 cm toward the
+    // viewer, drifting across the container at most twice as far as it comes.
 
     func isPull(_ x: Double, _ y: Double, _ z: Double) -> Bool {
-        PluckTuning().pullRule.isPull(SIMD3(x, y, z), threshold: threshold)
+        PluckTuning.firstShipped.pullRule.isPull(SIMD3(x, y, z), threshold: threshold)
     }
 
-    @Test func theDefaultPullTakesOneDeepForEveryTwoAcross() {
-        #expect(PluckTuning().pullRule == .outOfThePlane(depthPerDrift: 0.5))
+    @Test func theFirstShippedPullTakesOneDeepForEveryTwoAcross() {
+        #expect(PluckTuning.firstShipped.pullRule == .outOfThePlane(depthPerDrift: 0.5))
+    }
+
+    /// The default takes any move far enough, any way.
+    @Test func theDefaultPullIsAnyDirection() {
+        #expect(PluckTuning().pullRule == .anyDirection)
     }
 
     @Test func aStraightPullPastTheThresholdPulls() {
@@ -59,16 +64,19 @@ import Testing
     @Test func aNonFiniteTranslationIsNotAPull() {
         #expect(!isPull(.nan, 0, 40))
         #expect(!isPull(0, 0, .infinity))
-        #expect(PluckTuning().pullRule.judge(SIMD3(.nan, 0, 40), threshold: threshold).verdict == .notANumber)
+        #expect(PluckTuning().pullRule.judge(SIMD3(.nan, 0, 40), threshold: threshold, from: .arming).verdict == .notANumber)
     }
 
-    /// Its judgement says how deep and how far across a move went, against
-    /// what it needed, and why it didn't pull.
+    /// Its judgement says how deep and how far across a move went, from
+    /// where, against what it needed, and why it didn't pull.
     @Test func itsJudgementSaysWhy() {
         let rule = PluckPullRule.outOfThePlane(depthPerDrift: 0.5)
-        #expect(rule.judge(SIMD3(36, 48, 30), threshold: threshold) == PluckPullJudgement(depth: 30, drift: 60, threshold: 27, verdict: .pulls))
-        #expect(rule.judge(SIMD3(0, 0, 20), threshold: threshold).verdict == .tooShallow)
-        #expect(rule.judge(SIMD3(0, 200, 40), threshold: threshold).verdict == .tooSlanted)
+        #expect(rule.judge(SIMD3(36, 48, 30), threshold: threshold, from: .touch) == PluckPullJudgement(depth: 30, drift: 60, threshold: 27, verdict: .pulls, origin: .touch))
+        #expect(rule.judge(SIMD3(0, 0, 20), threshold: threshold, from: .touch).verdict == .tooShallow)
+        #expect(rule.judge(SIMD3(0, 200, 40), threshold: threshold, from: .touch).verdict == .tooSlanted)
+        let short = PluckPullRule.anyDirection.judge(SIMD3(3, 4, 0), threshold: 8, from: .arming)
+        #expect(short == PluckPullJudgement(depth: 0, drift: 5, threshold: 8, verdict: .tooShort, origin: .arming))
+        #expect(short.distance == 5)
     }
 
     /// A steeper rule turns down a slant the default takes.
@@ -84,7 +92,7 @@ import Testing
         let rule = PluckPullRule.towardTheViewer
         #expect(rule.isPull(SIMD3(0, 200, 40), threshold: threshold))
         #expect(rule.isPull(SIMD3(0, 0, 27), threshold: threshold))
-        #expect(rule.judge(SIMD3(500, 0, 26.9), threshold: threshold).verdict == .tooShallow)
+        #expect(rule.judge(SIMD3(500, 0, 26.9), threshold: threshold, from: .touch).verdict == .tooShallow)
         #expect(!rule.isPull(SIMD3(0, 0, -40), threshold: threshold))
     }
 
@@ -97,14 +105,18 @@ import Testing
         #expect(rule.isPull(SIMD3(27, 0, 0), threshold: threshold))
         #expect(rule.isPull(SIMD3(0, 0, -27), threshold: threshold))
         #expect(rule.isPull(SIMD3(0, 20, -20), threshold: threshold))
-        #expect(rule.judge(SIMD3(10, 10, 10), threshold: threshold).verdict == .tooShort)
+        #expect(rule.judge(SIMD3(10, 10, 10), threshold: threshold, from: .arming).verdict == .tooShort)
     }
 
-    /// A rule is a value a trace can keep and the lab can send.
+    /// A rule, and a judgement, are values a trace can keep and the lab can
+    /// send.
     @Test func aRuleRoundTripsThroughJSON() throws {
         for rule in [PluckPullRule.outOfThePlane(depthPerDrift: 0.75), .towardTheViewer, .anyDirection] {
             let data = try JSONEncoder().encode(rule)
             #expect(try JSONDecoder().decode(PluckPullRule.self, from: data) == rule)
         }
+        let judgement = PluckPullJudgement(depth: 5.3, drift: 1.6, threshold: 8.2, verdict: .tooShort, origin: .arming)
+        let data = try JSONEncoder().encode(judgement)
+        #expect(try JSONDecoder().decode(PluckPullJudgement.self, from: data) == judgement)
     }
 }

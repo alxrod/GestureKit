@@ -46,13 +46,13 @@ public enum PluckReason: Equatable, Sendable {
 
     /// A move that isn't a number, which moves nothing.
     case notANumber
-    /// Before the hold, a move this far from the touch, in the item's
-    /// points, breaks the stillness: the container's scroll, for the rest
-    /// of the pinch.
-    case movedFirst(distance: Double)
-    /// Before the hold, a move this far from the touch, within the
-    /// stillness: the hold goes on.
-    case withinStillness(distance: Double)
+    /// Before the hold, a move `distance` from the touch, in the item's
+    /// points, reaches the hold's `stillness`: the container's scroll, for
+    /// the rest of the pinch.
+    case movedFirst(distance: Double, stillness: Double)
+    /// Before the hold, a move `distance` from the touch, within the hold's
+    /// `stillness`: the hold goes on.
+    case withinStillness(distance: Double, stillness: Double)
     /// A move of a pinch told as the container's scroll, which lifts and
     /// pulls nothing.
     case scrolling(PluckPress.StayDown)
@@ -149,8 +149,10 @@ extension PluckReason: CustomStringConvertible {
         case .armed: "the pull armed"
         case .armingNotDue: "the arming isn't due"
         case .notANumber: "a move that isn't a number"
-        case .movedFirst(let distance): "moved \(pluckPoints(distance)) before the hold: a scroll"
-        case .withinStillness(let distance): "\(pluckPoints(distance)) from the touch, within the stillness"
+        case .movedFirst(let distance, let stillness):
+            "moved \(pluckPoints(distance)) before the hold, its stillness \(pluckPoints(stillness)): a scroll"
+        case .withinStillness(let distance, let stillness):
+            "\(pluckPoints(distance)) from the touch, within the hold's \(pluckPoints(stillness)) stillness"
         case .scrolling(let why): "a scroll (\(why == .movedFirst ? "moved first" : "the container scrolled"))"
         case .notArmedYet: "lifted, the pull not armed yet"
         case .notLifted: "the item isn't lifted"
@@ -172,8 +174,10 @@ extension PluckReason: CustomStringConvertible {
 }
 
 extension PluckPullJudgement: CustomStringConvertible {
-    /// The judgement in a few words: "too slanted, 30.0 deep, 120.0 across,
-    /// needs 27.0 pt".
+    /// The judgement in a few words, the move measured from where it was:
+    /// "too short, 5.5 pt from where it armed (5.3 deep, 1.6 across), needs
+    /// 8.2 pt", or "too slanted, 124.0 pt from the touch (30.0 deep, 120.0
+    /// across), needs 27.0 pt".
     public var description: String {
         let verdict = switch verdict {
         case .pulls: "pulls"
@@ -182,7 +186,12 @@ extension PluckPullJudgement: CustomStringConvertible {
         case .tooShort: "too short"
         case .notANumber: "not a number"
         }
-        return "\(verdict), \(pluckOneDecimal(depth)) deep, \(pluckOneDecimal(drift)) across, needs \(pluckPoints(threshold))"
+        let origin = switch origin {
+        case .touch: "the touch"
+        case .lift: "where it lifted"
+        case .arming: "where it armed"
+        }
+        return "\(verdict), \(pluckPoints(distance)) from \(origin) (\(pluckOneDecimal(depth)) deep, \(pluckOneDecimal(drift)) across), needs \(pluckPoints(threshold))"
     }
 }
 

@@ -26,6 +26,11 @@ final class PluckItemDriver {
         let recorder: TraceRecorder?
         let perform: (PluckEvent) -> Void
         let metrics: PhysicalMetricsConverter
+
+        /// The item's points to a meter, where it is.
+        @MainActor var pointsPerMeter: Double {
+            Double(metrics.convert(CGFloat(1), from: .meters))
+        }
     }
 
     private var pinches = PluckPinches()
@@ -84,8 +89,7 @@ final class PluckItemDriver {
         let moved = value.translation3D
         let translation = SIMD3(moved.x, moved.y, moved.z)
         lastLocation = value.location3D
-        let pointsPerMeter = Double(setting.metrics.convert(CGFloat(1), from: .meters))
-        apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter, at: .now), word: "drag", translation: translation)
+        apply(pinches.dragMoved(translation, pointsPerMeter: setting.pointsPerMeter, at: .now), word: "drag", translation: translation)
     }
 
     /// The pull's drag ended, let go.
@@ -170,15 +174,25 @@ final class PluckItemDriver {
         }
     }
 
+    /// The hold's count is up: the item lifts unless the container scrolled
+    /// since the touch, and the trace says how still the pinch was.
     private func holdCountIsUp() {
         holdCount = nil
         let touched = pinches.touchedAt ?? .now
         let scrolled = setting?.model?.scrolled(since: touched) ?? false
-        apply(
-            pinches.holdFired(asTheContainerScrolled: scrolled, at: .now),
-            word: "hold",
-            extra: scrolled ? "the container scrolled since the touch" : "the container still since the touch"
-        )
+        let stillness = scrolled ? "the container scrolled since the touch" : "the container still since the touch; \(holdStillnessNote())"
+        apply(pinches.holdFired(asTheContainerScrolled: scrolled, at: .now), word: "hold", extra: stillness)
+    }
+
+    /// How far the pinch under way moved before its hold, against its
+    /// stillness, as far as its drag has said.
+    private func holdStillnessNote() -> String {
+        guard let press = pinches.press else { return "no pinch" }
+        let tuning = press.tuning
+        guard press.dragTranslation != nil else {
+            return String(format: "the drag silent, the pinch within its %.0f pt start of the touch", tuning.dragStartDistance)
+        }
+        return String(format: "the pinch moved at most %.1f pt, its stillness %.0f pt", pinches.farthestBeforeHold, tuning.holdStillness)
     }
 
     private func armCountIsUp() {
@@ -243,7 +257,7 @@ final class PluckItemDriver {
                 setting.perform(.lifted)
             }
         case .pullArmed:
-            trace?.event("armed", "a pull may come out")
+            trace?.event("armed", armedNote(setting))
         case .beginPull:
             let position = place(setting)
             trace?.event("pull began", pluckItemPosition(position))
@@ -264,8 +278,32 @@ final class PluckItemDriver {
             trace?.event("settle", why.description + (change?.scrollHoldChanged == true ? "; the scroll on again" : ""))
             reportSettled()
         case .stayDown(let stayDown):
-            trace?.event("stays down", stayDown == .movedFirst ? "moved first: a scroll" : "the container scrolled: a scroll")
+            let stillness = pinches.press?.tuning.holdStillness ?? setting.tuning.holdStillness
+            let why = stayDown == .movedFirst
+                ? String(format: "the hold given up: moved past its %.0f pt stillness first, a scroll", stillness)
+                : "the hold given up: the container scrolled, a scroll"
+            trace?.event("stays down", why)
         }
+    }
+
+    /// What an armed pull needs, and from where, for the trace: the pull's
+    /// distance in the item's points and its rule, from where the pinch
+    /// stood as its item lifted, or as its pull armed, or the touch.
+    private func armedNote(_ setting: Setting) -> String {
+        guard let press = pinches.press else { return "a pull may come out" }
+        let tuning = press.tuning
+        let needs = String(format: "a pull needs %.1f pt %@", tuning.pullThreshold(pointsPerMeter: setting.pointsPerMeter), pluckItemPullWay(tuning))
+        let point: SIMD3<Double>?
+        let moment: String
+        switch tuning.pullOrigin {
+        case .touch: return needs + " from the touch"
+        case .lift: (point, moment) = (press.liftPoint, "lifted")
+        case .arming: (point, moment) = (press.armingPoint, "armed")
+        }
+        guard let point else {
+            return needs + String(format: " from the touch: the drag silent as it %@, the pinch within its %.0f pt start of it", moment, tuning.dragStartDistance)
+        }
+        return needs + " from \(pluckItemVector(point)), where it \(moment)"
     }
 
     /// Tells the app the item settled, once for each lift it was told of.
@@ -292,7 +330,7 @@ final class PluckItemDriver {
         guard let setting else { return }
         lastDragNote = nil
         trace = setting.recorder?.begin("Pluck", title: "Pinch on \(setting.title)")
-        trace?.event("tuning", pluckItemTuningLine(setting.tuning))
+        trace?.event("tuning", pluckItemTuningLine(setting.tuning, pointsPerMeter: setting.pointsPerMeter))
     }
 
     /// Notes a word in the trace, with why it did what it did. A drag's
@@ -352,15 +390,35 @@ private func pluckItemPosition(_ position: SIMD3<Float>?) -> String {
     return String(format: "(%.2f, %.2f, %.2f) m in the space", position.x, position.y, position.z)
 }
 
-/// The tuning a pinch began with, on one line.
-private func pluckItemTuningLine(_ tuning: PluckTuning) -> String {
-    let rule = tuning.pullsAnyDirection
-        ? "any way"
-        : (tuning.pullDepthPerDrift > 0 ? String(format: "1 deep per %.2f across", 1 / tuning.pullDepthPerDrift) : "toward you, any drift")
+/// Which way a pull goes, in words: "any way", or toward the viewer.
+private func pluckItemPullWay(_ tuning: PluckTuning) -> String {
+    switch tuning.pullRule {
+    case .anyDirection: "any way"
+    case .towardTheViewer: "toward you, any drift"
+    case .outOfThePlane(let depthPerDrift): String(format: "toward you, 1 deep per %.2f across", 1 / depthPerDrift)
+    }
+}
+
+/// Where a pull is measured from, in words.
+private func pluckItemPullOrigin(_ origin: PluckPullOrigin) -> String {
+    switch origin {
+    case .touch: "the touch"
+    case .lift: "where it lifted"
+    case .arming: "where it armed"
+    }
+}
+
+/// The tuning a pinch began with, on one line: what gives the hold up, when
+/// the pull arms, and what pulls, in centimeters and the item's points.
+private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double) -> String {
+    let holdGivenUp = tuning.holdStillness <= tuning.dragStartDistance
+        ? "the drag's first word"
+        : String(format: "a move of %.0f pt", tuning.holdStillness)
     return String(
-        format: "hold %.2f s within %.0f pt, drag from %.0f pt, arms %.2f s after, pull %.1f cm %@; scroll %@; press end %@; hold from the %@",
-        tuning.holdDuration, tuning.holdStillness, tuning.dragStartDistance, tuning.pullArmDelay,
-        tuning.pullDistance * 100, rule,
+        format: "hold %.2f s, given up by a scroll or %@; drag from %.0f pt; arms %.2f s after; pull %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@",
+        tuning.holdDuration, holdGivenUp, tuning.dragStartDistance, tuning.pullArmDelay,
+        tuning.pullDistance * 100, tuning.pullThreshold(pointsPerMeter: pointsPerMeter), pluckItemPullWay(tuning),
+        pluckItemPullOrigin(tuning.pullOrigin),
         tuning.stopsScrollUnderLiftedItem ? "stops under a lift" : "goes on",
         tuning.pressEndSettlesLiftedItem ? "settles a lift" : "keeps a lift up",
         tuning.holdsFromTheDrag ? "drag" : "press"

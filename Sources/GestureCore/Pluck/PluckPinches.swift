@@ -8,7 +8,8 @@
 ///
 /// - **A pinch begins** with its hold's press, or its drag's first word,
 ///   should that come first, and the hold counts from then
-///   (`Countdown.startHold`), unless that first word makes it a scroll. A
+///   (`Countdown.startHold`), unless that first word, past the hold's
+///   stillness, makes it a scroll. A
 ///   press while the drag has the pinch under way is the press coming back
 ///   to the item, as the hand moved off it and back, or joining the pinch
 ///   the drag began, and no new pinch. A press while a pinch is under way
@@ -17,8 +18,8 @@
 ///   nor its container's scroll off.
 /// - **Its hold** comes as the caller's count says, and lifts the item if
 ///   the press or the drag still has the pinch and the container didn't
-///   scroll during it; a pinch let go before then, or moved first, lifts
-///   nothing.
+///   scroll during it; a pinch let go before then, or moved past the hold's
+///   stillness first, lifts nothing.
 /// - **Its pull arms** once `pullArmDelay` has passed since its item
 ///   lifted, as the caller's count says (`armPull(at:)`), or the drag's
 ///   next word, should the count be late.
@@ -45,8 +46,8 @@ public struct PluckPinches: Sendable {
         public enum Outcome: String, Sendable, Codable {
             /// Let go before anything else: the item's tap.
             case tap
-            /// Its drag moved past the stillness before its hold, or its
-            /// container scrolled during it: the container's scroll, or
+            /// Its container scrolled during it, or its drag moved past the
+            /// hold's stillness before its hold: the container's scroll, or
             /// nothing.
             case scroll
             /// Its hold lifted the item, and it pulled nothing.
@@ -197,7 +198,11 @@ public struct PluckPinches: Sendable {
     private var dragReportedAt: ContinuousClock.Instant?
     private var moved: SIMD3<Double>?
     private var farthest = 0.0
-    private var farthestBeforeHold = 0.0
+    /// The farthest the drag of the pinch under way has said it went from
+    /// where it touched, in the item's points, before its hold came, or so
+    /// far should its hold not have come: 0 if the drag hasn't spoken by
+    /// then. What a trace says of how still a hold was.
+    public private(set) var farthestBeforeHold = 0.0
     /// Whether the item's tap came while the pinch was under way.
     private var tapCame = false
     /// Until when the item's tap is still the release of the pinch that
