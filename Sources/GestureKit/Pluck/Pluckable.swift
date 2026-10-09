@@ -40,9 +40,11 @@ public enum PluckEvent: Equatable, Sendable {
 
 extension View {
     /// Makes this view an item a pinch can pluck out of the scrolling
-    /// container around it, which `pluckContainer(_:tuning:trace:)` marks:
-    /// a pinch the container scrolls with, or that moves far first, is the
-    /// container's scroll; held still, a quarter second by default, the
+    /// container around it, which `pluckContainer(_:tuning:trace:scrollAxes:)`
+    /// marks: a pinch is the container's scroll unless it's a hold, so one
+    /// the container scrolls with, whose content moves at all, or that moves
+    /// a little along the scroll or far any way first, is the container's
+    /// scroll; held still, a quarter second by default, the
     /// item lifts, and the container's scroll stops under it, as tuned;
     /// lifted, it follows the hand a little, held to its place, until the
     /// hand has gone 2.5 cm, when it breaks free and spawns into the room
@@ -164,6 +166,7 @@ private struct PluckableItemModifier: ViewModifier {
             tuning: tuning,
             model: context?.model,
             recorder: context?.recorder,
+            scrollAxes: context?.scrollAxes ?? .vertical,
             perform: perform,
             metrics: physicalMetrics
         )

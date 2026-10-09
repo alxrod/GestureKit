@@ -36,6 +36,8 @@ final class PluckItemDriver {
         let tuning: PluckTuning
         let model: PluckContainerModel?
         let recorder: TraceRecorder?
+        /// The axes its container scrolls along.
+        let scrollAxes: PluckScrollAxes
         let perform: (PluckEvent) -> Void
         let metrics: PhysicalMetricsConverter
 
@@ -201,6 +203,24 @@ final class PluckItemDriver {
         reportSettled()
     }
 
+    /// The container's scroll offset changed to `offset`: the pinch under
+    /// way, before its hold, gives its hold up should the content have moved
+    /// past its stillness since the touch. Only that is traced, the offset
+    /// changing at every frame of a scroll.
+    func containerOffsetChanged(to offset: SIMD2<Double>) {
+        let told = pinches.scrollOffset(offset, at: .now)
+        guard !told.actions.isEmpty else { return }
+        apply(told, word: "scroll offset")
+    }
+
+    /// Reads where the container's scroll offset stands for the pinch under
+    /// way: at its touch, where it's measured from; at its hold, in case a
+    /// change went unheard.
+    private func readScrollOffset() {
+        guard let offset = setting?.model?.scrollOffset else { return }
+        containerOffsetChanged(to: offset)
+    }
+
     /// A pinch began on another item: this one, kept up past its press, is
     /// over.
     func pinchBeganElsewhere() {
@@ -235,24 +255,42 @@ final class PluckItemDriver {
     }
 
     /// The hold's count is up: the item lifts unless the container scrolled
-    /// since the touch, and the trace says how still the pinch was.
+    /// since the touch, as its scroll view or its offset says, and the trace
+    /// says plainly why it lifted or didn't.
     private func holdCountIsUp() {
         holdCount = nil
+        readScrollOffset()
         let touched = pinches.touchedAt ?? .now
         let scrolled = setting?.model?.scrolled(since: touched) ?? false
-        let stillness = scrolled ? "the container scrolled since the touch" : "the container still since the touch; \(holdStillnessNote())"
-        apply(pinches.holdFired(asTheContainerScrolled: scrolled, at: .now), word: "hold", extra: stillness)
+        let note = holdNote(scrollViewScrolled: scrolled)
+        apply(pinches.holdFired(asTheContainerScrolled: scrolled, at: .now), word: "hold", extra: note)
     }
 
-    /// How far the pinch under way moved before its hold, against its
-    /// stillness, as far as its drag has said.
-    private func holdStillnessNote() -> String {
+    /// Why the hold lifted its item or didn't, in plain words: the scroll
+    /// view, the scroll offset's move since the touch, and how far the pinch
+    /// moved along the scroll and any way, each against what the hold
+    /// allows.
+    private func holdNote(scrollViewScrolled: Bool) -> String {
         guard let press = pinches.press else { return "no pinch" }
         let tuning = press.tuning
-        guard press.dragTranslation != nil else {
-            return String(format: "the drag silent, the pinch within its %.0f pt start of the touch", tuning.dragStartDistance)
+        var parts: [String] = []
+        parts.append(scrollViewScrolled ? "its scroll view scrolled since the touch" : "its scroll view still since the touch")
+        if let moved = pinches.scrollOffsetMovedBeforeHold {
+            parts.append(tuning.holdWatchesScrollOffset
+                ? String(format: "its scroll offset moved %.1f pt, %.1f allowed", moved, tuning.scrollOffsetStillness)
+                : String(format: "its scroll offset moved %.1f pt, unwatched", moved))
+        } else {
+            parts.append("its scroll offset unread")
         }
-        return String(format: "the pinch moved at most %.1f pt, its stillness %.0f pt", pinches.farthestBeforeHold, tuning.holdStillness)
+        if press.dragTranslation == nil {
+            parts.append(String(format: "the drag silent, the pinch within its %.0f pt start of the touch", tuning.dragStartDistance))
+        } else {
+            parts.append(String(
+                format: "the pinch moved %.1f pt along the scroll, %.0f allowed, and %.1f any way, %.0f allowed",
+                pinches.farthestAlongScrollBeforeHold, tuning.holdStillnessAlongScroll, pinches.farthestBeforeHold, tuning.holdStillness
+            ))
+        }
+        return parts.joined(separator: "; ")
     }
 
     private func armCountIsUp() {
@@ -266,6 +304,7 @@ final class PluckItemDriver {
     private func adopt(_ setting: Setting) {
         self.setting = setting
         pinches.tuning = setting.tuning
+        pinches.scrollAxes = setting.scrollAxes
     }
 
     /// Does what one word told: begins and ends traces, runs the counts,
@@ -284,6 +323,9 @@ final class PluckItemDriver {
             if told.ended == nil {
                 for action in told.actions { perform(action, why: told.why) }
             }
+            // Where the content stands at the touch, which its moves are
+            // measured from.
+            readScrollOffset()
             showFollow()
             return
         }
@@ -359,6 +401,9 @@ final class PluckItemDriver {
             setting.perform(.spawnCancelled)
         case .settle:
             let change = setting.model?.settle(setting.id)
+            if case .givenBackToTheScroll = why {
+                pluckItemLogger.info("The pinch on \(setting.title) was given back to the scroll: \(why.description, privacy: .public)")
+            }
             var detail = why.description
             if let held = heldFarthest, !brokeFree {
                 detail += String(format: "; held to %.1f pt of %.1f, not broken free", held.reach, held.needs)
@@ -366,12 +411,12 @@ final class PluckItemDriver {
             if change?.scrollHoldChanged == true { detail += "; the scroll on again" }
             trace?.event("settle", detail)
             reportSettled()
-        case .stayDown(let stayDown):
-            let stillness = pinches.press?.tuning.holdStillness ?? setting.tuning.holdStillness
-            let why = stayDown == .movedFirst
-                ? String(format: "the hold given up: moved past its %.0f pt stillness first, a scroll", stillness)
-                : "the hold given up: the container scrolled, a scroll"
-            trace?.event("stays down", why)
+        case .stayDown:
+            let reason = switch why {
+            case .containerScrolled: "its scroll view scrolled since the touch, a scroll"
+            default: why.description
+            }
+            trace?.event("stays down", "the hold given up: " + reason)
         }
     }
 
@@ -549,19 +594,25 @@ private func pluckItemPullOrigin(_ origin: PluckPullOrigin) -> String {
 /// and the item's points, and the points to a meter of the hand it was
 /// measured at.
 private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double, windowScale: Double?) -> String {
-    let holdGivenUp = tuning.holdStillness <= tuning.dragStartDistance
+    let moved = tuning.holdStillness <= tuning.dragStartDistance
         ? "the drag's first word"
-        : String(format: "a move of %.0f pt", tuning.holdStillness)
+        : String(format: "%.0f pt along the scroll or %.0f any way", tuning.holdStillnessAlongScroll, tuning.holdStillness)
+    let offset = tuning.holdWatchesScrollOffset
+        ? String(format: ", its offset moving %.1f pt,", tuning.scrollOffsetStillness)
+        : ""
+    let holdGivenUp = "its scroll view scrolling\(offset) or \(moved)"
     let follows = tuning.tether.follows
         ? String(format: "follows %.2f of the hand toward %.0f pt", tuning.followShare, tuning.followCap)
         : "follows nothing"
     let scale = windowScale.map { String(format: "the window at %.2f×", $0) } ?? "the window's scale unknown, taken as its own size"
     return String(
-        format: "hold %.2f s, given up by a scroll or %@; drag from %.0f pt; lifted, %@; arms %.2f s after the lift; breaks free at %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@; %.0f pt to a meter of the hand, %@",
+        format: "hold %.2f s, given up by %@; drag from %.0f pt; lifted, %@; arms %.2f s after the lift; breaks free at %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@; %.0f pt to a meter of the hand, %@",
         tuning.holdDuration, holdGivenUp, tuning.dragStartDistance, follows, tuning.pullArmDelay,
         tuning.breakFreeDistance * 100, tuning.breakFreeThreshold(pointsPerMeter: pointsPerMeter), pluckItemPullWay(tuning),
         pluckItemPullOrigin(tuning.pullOrigin),
-        tuning.stopsScrollUnderLiftedItem ? "stops under a lift" : "goes on",
+        tuning.stopsScrollUnderLiftedItem
+            ? (tuning.givesLiftBackToScroll ? "stops under a lift, given back a move along it" : "stops under a lift")
+            : "goes on",
         tuning.pressEndSettlesLiftedItem ? "settles a lift" : "keeps a lift up",
         tuning.holdsFromTheDrag ? "drag" : "press",
         pointsPerMeter, scale
@@ -585,7 +636,13 @@ private func pluckItemAccountLine(_ account: PluckPinches.Account) -> String {
     if let needs = account.breakFreeAt {
         parts.append(String(format: "stretched %.1f of %.1f pt", account.farthestStretch, needs))
     }
-    parts.append(String(format: "farthest %.1f pt, %.1f before the hold", account.farthest, account.farthestBeforeHold))
+    parts.append(String(
+        format: "farthest %.1f pt, %.1f before the hold, %.1f of it along the scroll",
+        account.farthest, account.farthestBeforeHold, account.farthestAlongScrollBeforeHold
+    ))
+    if let offset = account.scrollOffsetMovedBeforeHold {
+        parts.append(String(format: "scroll offset moved %.1f pt before the hold", offset))
+    }
     return parts.joined(separator: ", ")
 }
 #endif
