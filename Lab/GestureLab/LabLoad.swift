@@ -20,11 +20,18 @@ private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", c
 ///   a second for 2 s each, as a pull's drag moves it.
 /// - `scroll`: the pluck's grid scrolled up and down its length at 1,500 pt
 ///   a second, as a flick moves it.
+/// - `drag`: the press's playhead moved along its surface 90 times a second,
+///   as a drag along it scrolls it.
+/// - `coast`: the press's playhead flicked every 2 s, coasting in between.
+/// - `switch`: the next station chosen every 4 s, as the window's list does.
 enum LabLoad: String, CaseIterable {
     case trace
     case tuning
     case pull
     case scroll
+    case drag
+    case coast
+    case `switch`
 
     /// The loads `-labLoad` asked for at launch.
     static let asked: Set<LabLoad> = {
@@ -45,6 +52,9 @@ enum LabLoad: String, CaseIterable {
                 case .trace: await traceLoad(on: station.trace)
                 case .tuning: await tuningLoad(on: station)
                 case .pull: await pullLoad(on: station)
+                case .drag: await dragLoad(on: station)
+                case .coast: await coastLoad(on: station)
+                case .switch: await switchLoad(on: lab)
                 case .scroll: break
                 }
             }
@@ -114,6 +124,42 @@ enum LabLoad: String, CaseIterable {
             station.handle(.settled, item: item)
             if station.cards.count >= 4 { station.clearCards() }
             item = item % station.itemCount + 1
+        }
+    }
+
+    @MainActor private static func switchLoad(on lab: LabModel) async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(4))
+            let index = lab.stations.firstIndex { $0.id == lab.chosenID } ?? 0
+            lab.chosenID = lab.stations[(index + 1) % lab.stations.count].id
+            labLoadLogger.info("Lab load switch: chose \(lab.chosenID, privacy: .public)")
+        }
+    }
+
+    @MainActor private static func dragLoad(on station: any LabStation) async {
+        guard let station = station as? PressStation else {
+            labLoadLogger.error("Lab load drag: choose the press station")
+            return
+        }
+        var time = 0.0
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(11))
+            time += 1.0 / 90
+            station.loadScrollStep(to: station.length * (1 - cos(time * 2 * .pi / 3)) / 2)
+        }
+    }
+
+    @MainActor private static func coastLoad(on station: any LabStation) async {
+        guard let station = station as? PressStation else {
+            labLoadLogger.error("Lab load coast: choose the press station")
+            return
+        }
+        var velocity = 1.5
+        while !Task.isCancelled {
+            station.loadScrollStep(to: velocity > 0 ? 0.1 : station.length - 0.1)
+            station.loadFlick(at: velocity)
+            velocity = -velocity
+            try? await Task.sleep(for: .seconds(2))
         }
     }
 }

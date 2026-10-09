@@ -313,3 +313,23 @@ final class PressStation: LabStation {
         }
     }
 }
+
+#if DEBUG
+extension PressStation {
+    /// The lab load's drag along the surface (`LabLoad`): the playhead moved
+    /// to `along`, as each step of a scroll moves it.
+    func loadScrollStep(to along: Double) {
+        playhead = min(max(along, 0), length)
+    }
+
+    /// The lab load's flick (`LabLoad`): the playhead let go moving at
+    /// `velocity`, in meters a second, coasting as a scroll let go does.
+    func loadFlick(at velocity: Double) {
+        let time = now()
+        release = ReleaseVelocity(tuning: coast.tuning)
+        release.record(playhead - velocity * 0.05, at: time - 0.05)
+        release.record(playhead, at: time)
+        endScroll(coasting: true)
+    }
+}
+#endif
