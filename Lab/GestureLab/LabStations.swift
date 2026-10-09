@@ -4,6 +4,7 @@ enum LabStations {
     @MainActor static func all() -> [any LabStation] {
         [
             TraceCheckStation(),
+            PluckStation(),
         ]
     }
 }
