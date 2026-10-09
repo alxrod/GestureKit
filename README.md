@@ -10,8 +10,12 @@ rather than in the simulator, which can't pinch.
 - **Placement**: a panel opens below your gaze, tilted up to you, and stays
   put until you carry it.
 - **Pluck**: pull an item out of a scrolling grid into the room. A pinch
-  that moves first scrolls; held still, the item lifts; a moment later, a
-  pull toward you takes it out.
+  that moves first scrolls; held still, the item lifts and the scroll stops;
+  a moment later, a pull toward you takes it out. Mark the scroll view
+  `pluckContainer` and each item `pluckable`, and act on what each reports:
+  its tap, its lift, and where its pull is in the space.
+- **Lift**: a view lifted off what it lies on, scaled up and brought toward
+  you on a spring, over its shadow.
 - **Press**: one pinch on a surface, told as a tap, a drag along or across,
   a pickup and carry, or a hold.
 - **Coast**: a scroll let go on the move coasts on, and a pinch catches it.

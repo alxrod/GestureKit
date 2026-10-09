@@ -43,13 +43,15 @@ surfaces, panels, handles, grids, and carried things.
 | Carry | A grab handle carries a thing 1:1 with the hand, by its middle, never nearer the head than 0.3 m. A pinch waits 8 pt before it carries. |
 | Facing | A thing turns to face the viewer, standing on a point or hanging from one, and keeps its way when the viewer is straight above or below it. |
 | Placement | A panel opens below the gaze, a set distance out, tilted up to the head, and stays put until carried by its handle. |
-| Pluck | An item pulled out of a scrolling grid: a pinch that moves first is the grid's scroll; held still, the item lifts and the scroll stops under it; a moment later its pull arms, and a move toward the viewer pulls it out. |
+| Pluck | An item pulled out of a scrolling grid: a pinch that moves first is the grid's scroll; held still, the item lifts and the scroll stops under it; a moment later its pull arms, and a move toward the viewer pulls it out, reported in the immersive space's meters. `pluckContainer` marks the scroll view, `pluckable` each item. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go. |
+| Lift | A view lifted off what it lies on: scaled up and brought toward the viewer on a spring, over its shadow, above its neighbors, coming down without the bounce. The pluck's items show it, and anything a press picks up can. |
 | Press | One pinch on a surface, told as a tap, a drag along or across, a pickup and carry, or a hold, by how far it moves and how long it's still. |
 | Coast | A scroll let go on the move coasts on, slowing exponentially, and a pinch catches it. |
 | HoldWatch | A still hold on a handle or control, watched beside its own drag and tap. |
 
 Each area is a folder of its own in GestureCore and in GestureKit, named as
-above, with its tests in `Tests/GestureCoreTests/<Area>/`.
+above, with its tests in `Tests/GestureCoreTests/<Area>/`; Lift, which has no
+rules of its own, is in GestureKit alone.
 
 ## The lab
 
