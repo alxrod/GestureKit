@@ -91,7 +91,10 @@ s")`), and finishes it with its outcome (`trace?.finish("pull")`). The
 recorder keeps the last 30 interactions, newest first (`TraceLog`), the
 window's `TraceView` shows each as a timeline, large and white on black so a
 screen recording on the headset reads it, and each finished one's summary is
-logged at info level, one line, for the console:
+logged at info level, one line, for the console. The trace shows the log's
+changes at most ten times a second (`TracePacing`), and lays itself out in
+the room it's offered alone, so a gesture writing it as a hand moves draws
+nothing else again:
 
     #3 Trace check · Pinch on the cube → tap, 0.13 s: touch +0.00 s (size 0.20 m); release +0.12 s (moved 0.2 cm)
 
@@ -102,8 +105,9 @@ Each area's tuning conforms to `Tunable`: its defaults, and a
 name), a title, a unit, a range and a step, read and written through its key
 path. The station keeps it in a `TuningStore`, which saves the values that
 differ from the defaults in `UserDefaults` under "GestureLab.<station
-id>", and shows a `TuningPanel`: a slider with its number for each number, a
-switch for each switch, Defaults, and Copy tuning. The station passes
+id>", and shows a `TuningPanel`: a slider with its number for each number,
+unstepped, its value fitted to the step as it's set, a switch for each
+switch, Defaults, and Copy tuning. The station passes
 `store.tuning` to its adapters as it reads them, so a slider's change takes
 effect at once.
 

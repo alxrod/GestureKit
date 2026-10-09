@@ -21,10 +21,10 @@ private let logger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category
 ///     trace?.finish("pull")
 ///
 /// What a trace shows (`shownLog`) follows the log paced (`TracePacing`):
-/// at once after a quiet spell, then at most ten times a second. Drawn
-/// again at every event, the trace took a fifth of the app's time in the
-/// simulator, and more of the render server's, at 20 events a second, as a
-/// gesture writes while a hand moves.
+/// at once after a quiet spell, then at most ten times a second. With
+/// events written 20 times a second, as a gesture writes them while a hand
+/// moves, a trace drawn again at every event cost the app 17% of a core in
+/// the simulator, and the render server more; paced, 11%.
 @MainActor @Observable
 public final class TraceRecorder {
     /// The interactions it keeps, with their events and outcomes, as they
