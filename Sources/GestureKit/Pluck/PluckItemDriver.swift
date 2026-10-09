@@ -288,16 +288,22 @@ final class PluckItemDriver {
 
     /// What an armed pull needs, and from where, for the trace: the pull's
     /// distance in the item's points and its rule, from where the pinch
-    /// stood as it armed, or the touch.
+    /// stood as its item lifted, or as its pull armed, or the touch.
     private func armedNote(_ setting: Setting) -> String {
         guard let press = pinches.press else { return "a pull may come out" }
         let tuning = press.tuning
         let needs = String(format: "a pull needs %.1f pt %@", tuning.pullThreshold(pointsPerMeter: setting.pointsPerMeter), pluckItemPullWay(tuning))
-        guard tuning.measuresPullFromArming else { return needs + " from the touch" }
-        guard let armedAt = press.armedAt else {
-            return needs + String(format: " from the touch: the drag silent, the pinch within its %.0f pt start of it", tuning.dragStartDistance)
+        let point: SIMD3<Double>?
+        let moment: String
+        switch tuning.pullOrigin {
+        case .touch: return needs + " from the touch"
+        case .lift: (point, moment) = (press.liftPoint, "lifted")
+        case .arming: (point, moment) = (press.armingPoint, "armed")
         }
-        return needs + " from \(pluckItemVector(armedAt)), where it armed"
+        guard let point else {
+            return needs + String(format: " from the touch: the drag silent as it %@, the pinch within its %.0f pt start of it", moment, tuning.dragStartDistance)
+        }
+        return needs + " from \(pluckItemVector(point)), where it \(moment)"
     }
 
     /// Tells the app the item settled, once for each lift it was told of.
@@ -393,6 +399,15 @@ private func pluckItemPullWay(_ tuning: PluckTuning) -> String {
     }
 }
 
+/// Where a pull is measured from, in words.
+private func pluckItemPullOrigin(_ origin: PluckPullOrigin) -> String {
+    switch origin {
+    case .touch: "the touch"
+    case .lift: "where it lifted"
+    case .arming: "where it armed"
+    }
+}
+
 /// The tuning a pinch began with, on one line: what gives the hold up, when
 /// the pull arms, and what pulls, in centimeters and the item's points.
 private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double) -> String {
@@ -403,7 +418,7 @@ private func pluckItemTuningLine(_ tuning: PluckTuning, pointsPerMeter: Double) 
         format: "hold %.2f s, given up by a scroll or %@; drag from %.0f pt; arms %.2f s after; pull %.1f cm, %.1f pt, %@ from %@; scroll %@; press end %@; hold from the %@",
         tuning.holdDuration, holdGivenUp, tuning.dragStartDistance, tuning.pullArmDelay,
         tuning.pullDistance * 100, tuning.pullThreshold(pointsPerMeter: pointsPerMeter), pluckItemPullWay(tuning),
-        tuning.measuresPullFromArming ? "where it armed" : "the touch",
+        pluckItemPullOrigin(tuning.pullOrigin),
         tuning.stopsScrollUnderLiftedItem ? "stops under a lift" : "goes on",
         tuning.pressEndSettlesLiftedItem ? "settles a lift" : "keeps a lift up",
         tuning.holdsFromTheDrag ? "drag" : "press"

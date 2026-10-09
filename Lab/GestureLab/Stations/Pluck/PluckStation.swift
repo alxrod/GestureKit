@@ -148,7 +148,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. A moment later move your hand any way, about half a centimeter, and it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. Then move your hand any way, about half a centimeter from where it was as the item lifted, and once the pull arms, a moment after the lift, it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
