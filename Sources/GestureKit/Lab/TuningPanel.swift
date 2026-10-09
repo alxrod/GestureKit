@@ -37,34 +37,70 @@ public struct TuningPanel<Tuning: Tunable>: View {
                 }
             }
             ForEach(Tuning.parameters) { parameter in
-                if parameter.isSwitch {
-                    switchRow(parameter)
-                } else {
-                    sliderRow(parameter)
+                TuningPanelRow(parameter: parameter, value: store.value(of: parameter)) { value in
+                    store.set(value, for: parameter)
                 }
+                .equatable()
             }
         }
         .padding(20)
     }
 
-    private func sliderRow(_ parameter: TuningParameter<Tuning>) -> some View {
-        let value = store.value(of: parameter)
-        return VStack(alignment: .leading, spacing: 6) {
+    private func copy() {
+        let swift = store.tuning.swiftInitializer()
+        UIPasteboard.general.string = swift
+        logger.info("Copied the tuning of \(store.namespace, privacy: .public):\n\(swift, privacy: .public)")
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
+        }
+    }
+}
+
+/// One value's row in a `TuningPanel`: a slider with its number, or a
+/// switch, its yellow dot and its default beside it while it differs from
+/// the default. It's drawn again only as its own value changes, so a slider
+/// dragged draws its own row again and none of the panel's others, which a
+/// panel drawing every row itself did at each step of any one.
+private struct TuningPanelRow<Tuning: Tunable>: View, Equatable {
+    let parameter: TuningParameter<Tuning>
+    let value: TuningValue
+    let set: (TuningValue) -> Void
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.parameter.key == rhs.parameter.key && lhs.value == rhs.value
+    }
+
+    var body: some View {
+        if parameter.isSwitch {
+            switchRow
+        } else {
+            sliderRow
+        }
+    }
+
+    private var sliderRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                tunedMark(parameter, value)
+                tunedMark
                 Text(parameter.title)
                     .font(.system(size: 20, weight: .medium))
                 Spacer()
                 Text(parameter.text(for: value))
                     .font(.system(size: 22, weight: .semibold).monospacedDigit())
             }
+            // Unstepped, its value fitted to the step as it's set
+            // (`TuningStore.set`), so it still moves a step at a time: a
+            // stepped slider draws a mark at each step, up to 120 of them on
+            // one, which made each value set cost more than all else in a
+            // station's window, in proportion to every stepped slider there.
             Slider(
                 value: Binding(
-                    get: { store.value(of: parameter).number ?? parameter.range.lowerBound },
-                    set: { store.set(.number($0), for: parameter) }
+                    get: { value.number ?? parameter.range.lowerBound },
+                    set: { set(.number($0)) }
                 ),
-                in: parameter.range,
-                step: parameter.step
+                in: parameter.range
             ) {
                 Text(parameter.title)
             } minimumValueLabel: {
@@ -83,13 +119,12 @@ public struct TuningPanel<Tuning: Tunable>: View {
         .accessibilityValue(parameter.text(for: value))
     }
 
-    private func switchRow(_ parameter: TuningParameter<Tuning>) -> some View {
-        let value = store.value(of: parameter)
-        return HStack(spacing: 10) {
-            tunedMark(parameter, value)
+    private var switchRow: some View {
+        HStack(spacing: 10) {
+            tunedMark
             Toggle(isOn: Binding(
-                get: { store.value(of: parameter).isOn ?? false },
-                set: { store.set(.toggle($0), for: parameter) }
+                get: { value.isOn ?? false },
+                set: { set(.toggle($0)) }
             )) {
                 Text(parameter.title)
                     .font(.system(size: 20, weight: .medium))
@@ -99,22 +134,11 @@ public struct TuningPanel<Tuning: Tunable>: View {
 
     /// A yellow dot beside a value that differs from its default; clear
     /// room otherwise, so the titles line up.
-    private func tunedMark(_ parameter: TuningParameter<Tuning>, _ value: TuningValue) -> some View {
+    private var tunedMark: some View {
         Circle()
             .fill(value != parameter.defaultValue ? Color.yellow : .clear)
             .frame(width: 10, height: 10)
             .accessibilityHidden(true)
-    }
-
-    private func copy() {
-        let swift = store.tuning.swiftInitializer()
-        UIPasteboard.general.string = swift
-        logger.info("Copied the tuning of \(store.namespace, privacy: .public):\n\(swift, privacy: .public)")
-        copied = true
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            copied = false
-        }
     }
 }
 #endif

@@ -43,6 +43,17 @@ public enum GrabHandle {
     /// stands.
     public static let reachDepth: Float = 0.006
 
+    /// What a handle draws with: clear, and writing no depth, so it hides
+    /// nothing, the hover effect's glow drawing in full however clear the
+    /// material is. Made once: making a material loads its engine resource
+    /// there and then, which took most of a reshape's time.
+    private static let clearMaterial: UnlitMaterial = {
+        var material = UnlitMaterial(color: .white)
+        material.blending = .transparent(opacity: .init(floatLiteral: 0))
+        material.writesDepth = false
+        return material
+    }()
+
     /// Registers the component that marks GestureKit's grab handles, which
     /// an entity-targeted drag's query asks for before anything uses it.
     public static func registerComponents() {
@@ -103,12 +114,7 @@ public enum GrabHandle {
         }
         let reach = reach ?? size
         let corner = min(cornerRadius ?? size.y / 2, size.x / 2, size.y / 2)
-        // Clear, and writing no depth, so it hides nothing: the hover
-        // effect's glow draws in full however clear the material is.
-        var material = UnlitMaterial(color: .white)
-        material.blending = .transparent(opacity: .init(floatLiteral: 0))
-        material.writesDepth = false
-        handle.model = ModelComponent(mesh: .generatePlane(width: size.x, height: size.y, cornerRadius: corner), materials: [material])
+        handle.model = ModelComponent(mesh: .generatePlane(width: size.x, height: size.y, cornerRadius: corner), materials: [clearMaterial])
         let box = ShapeResource.generateBox(width: max(reach.x, 0.001), height: max(reach.y, 0.001), depth: reachDepth)
             .offsetBy(translation: SIMD3(reachOffset.x, reachOffset.y, 0))
         handle.components.set(CollisionComponent(shapes: [box]))

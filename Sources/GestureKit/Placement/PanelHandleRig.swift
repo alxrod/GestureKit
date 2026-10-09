@@ -38,6 +38,14 @@ public final class PanelHandleRig {
     /// How tall the panel lays out, in points, as it last said.
     public private(set) var panelHeight: Double
 
+    /// The grab handle's size, reach, and the reach's offset, in meters, as
+    /// it was last shaped: a retune that moves where the panel stands but
+    /// not its handle, as a placement slider does at every step, shapes
+    /// nothing, since shaping makes the handle's mesh, collision, and
+    /// material afresh, which took a third of the main thread while such a
+    /// slider moved.
+    private var shaped: [SIMD2<Float>] = []
+
     /// A handle under `panel`, carrying what `carriedID` names, marked with
     /// a `GrabHandleComponent`, for a panel `panelHeight` points tall until
     /// it says otherwise (`panelResized(toHeight:)`).
@@ -104,6 +112,8 @@ public final class PanelHandleRig {
         let size = SIMD2<Float>(tuning.handleSize) * metersPerPoint
         let reach = SIMD2<Float>(PanelHandle.reach(tuning: tuning)) * metersPerPoint
         let offset = SIMD2(0, Float(PanelHandle.reachOffset(tuning: tuning)) * metersPerPoint)
+        guard [size, reach, offset] != shaped else { return }
+        shaped = [size, reach, offset]
         let wasEnabled = handle.isEnabled
         GrabHandle.reshape(handle, size: size, reach: reach, reachOffset: offset)
         handle.isEnabled = wasEnabled && handle.isEnabled

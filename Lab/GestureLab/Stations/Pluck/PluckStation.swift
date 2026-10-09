@@ -31,8 +31,19 @@ final class PluckStation: LabStation {
     /// The grid's container: the lifted item and the scroll's hold.
     let container = PluckContainerModel()
 
-    /// The cards in the room, landed or on their way.
-    private(set) var cards: [PluckLabCard] = []
+    /// The cards in the room, landed or on their way. A pull moves its card
+    /// at every step of its drag, so only the space reads them; the windows
+    /// read `cardCount`.
+    private(set) var cards: [PluckLabCard] = [] {
+        didSet {
+            if cards.count != cardCount { cardCount = cards.count }
+        }
+    }
+
+    /// How many cards are in the room, observed apart from where they stand,
+    /// so a pull's moves draw neither window again: read from the cards, they
+    /// drew the grid's window again at every step of a pull.
+    private(set) var cardCount = 0
 
     /// The card each item's pull under way carries, by the item's number.
     @ObservationIgnored private var pulling: [Int: UUID] = [:]
@@ -135,7 +146,7 @@ private func pluckLabColor(of number: Int) -> Color {
 /// What the cards in the room come to, in words.
 @MainActor
 private func pluckLabCardsText(_ station: PluckStation) -> String {
-    switch station.cards.count {
+    switch station.cardCount {
     case 0: "No cards in the room"
     case 1: "1 card in the room"
     case let count: "\(count) cards in the room"
@@ -157,7 +168,7 @@ private struct PluckLabInstructions: View {
                 Button("Clear the room", systemImage: "trash") {
                     station.clearCards()
                 }
-                .disabled(station.cards.isEmpty)
+                .disabled(station.cardCount == 0)
             }
         }
     }
@@ -165,7 +176,8 @@ private struct PluckLabInstructions: View {
 
 /// The pluck's own window: the grid, edge to edge, in its own scroll view,
 /// in as many columns as fit at 260 pt, 2 pt apart, as a library window's;
-/// and below it, the cards and what was last tapped.
+/// and below it, the cards and what was last tapped, in a view of their
+/// own (`PluckLabGridStatus`), so a tap draws that again and not the grid.
 private struct PluckLabGridWindow: View {
     let station: PluckStation
 
@@ -183,30 +195,43 @@ private struct PluckLabGridWindow: View {
                 }
             }
         }
+        #if DEBUG
+        .labLoadScrolls()
+        #endif
         .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
         .ignoresSafeArea()
         .id(station.spaceAppearances)
         // Four columns at the least, as a library window's.
         .frame(minWidth: 4 * 260 + 3 * 2, minHeight: 500)
         .ornament(attachmentAnchor: .scene(.bottom), contentAlignment: .top) {
-            HStack(spacing: 20) {
-                Text(pluckLabCardsText(station))
-                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
-                if let tapped = station.lastTapped {
-                    Text("Tapped item \(tapped) · \(station.taps)")
-                        .font(.system(size: 18).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                Button("Clear the room", systemImage: "trash") {
-                    station.clearCards()
-                }
-                .disabled(station.cards.isEmpty)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
-            .glassBackgroundEffect()
-            .padding(.top, 16)
+            PluckLabGridStatus(station: station)
         }
+    }
+}
+
+/// Below the pluck's grid: the cards in the room, what was last tapped, and
+/// Clear the room.
+private struct PluckLabGridStatus: View {
+    let station: PluckStation
+
+    var body: some View {
+        HStack(spacing: 20) {
+            Text(pluckLabCardsText(station))
+                .font(.system(size: 20, weight: .semibold).monospacedDigit())
+            if let tapped = station.lastTapped {
+                Text("Tapped item \(tapped) · \(station.taps)")
+                    .font(.system(size: 18).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Button("Clear the room", systemImage: "trash") {
+                station.clearCards()
+            }
+            .disabled(station.cardCount == 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .glassBackgroundEffect()
+        .padding(.top, 16)
     }
 }
 

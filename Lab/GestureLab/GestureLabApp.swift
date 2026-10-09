@@ -16,7 +16,11 @@ struct GestureLabApp: App {
         for station in stations {
             type(of: station).registerComponents()
         }
-        _lab = State(initialValue: LabModel(stations: stations))
+        let lab = LabModel(stations: stations)
+        _lab = State(initialValue: lab)
+        #if DEBUG
+        LabLoad.start(on: lab)
+        #endif
     }
 
     var body: some Scene {

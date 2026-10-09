@@ -28,7 +28,14 @@ final class LabModel {
     init(stations: [any LabStation]) {
         precondition(!stations.isEmpty, "The lab needs a station.")
         self.stations = stations
-        let remembered = UserDefaults.standard.string(forKey: Self.chosenKey)
+        var remembered = UserDefaults.standard.string(forKey: Self.chosenKey)
+        #if DEBUG
+        // `-station <id>` at launch chooses that station, as for measuring
+        // one in the simulator, where nothing can be pinched to choose it.
+        if let asked = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["station"] as? String {
+            remembered = asked
+        }
+        #endif
         chosenID = stations.contains { $0.id == remembered } ? remembered ?? stations[0].id : stations[0].id
     }
 

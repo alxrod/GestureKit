@@ -19,10 +19,27 @@ private let logger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category
 ///     trace?.event("lift", "held still 0.50 s")
 ///     // as it ends:
 ///     trace?.finish("pull")
+///
+/// What a trace shows (`shownLog`) follows the log paced (`TracePacing`):
+/// at once after a quiet spell, then at most ten times a second. Drawn
+/// again at every event, the trace took a fifth of the app's time in the
+/// simulator, and more of the render server's, at 20 events a second, as a
+/// gesture writes while a hand moves.
 @MainActor @Observable
 public final class TraceRecorder {
-    /// The interactions it keeps, with their events and outcomes.
-    public private(set) var log: TraceLog
+    /// The interactions it keeps, with their events and outcomes, as they
+    /// stand.
+    public private(set) var log: TraceLog {
+        didSet { logChanged() }
+    }
+
+    /// The log as a trace shows it: `log`, at most `TracePacing`'s interval
+    /// behind it.
+    public private(set) var shownLog: TraceLog
+
+    @ObservationIgnored private var pacing = TracePacing()
+    /// The showing due, while one is.
+    @ObservationIgnored private var showing: Task<Void, Never>?
 
     /// Whether the summaries it logs show in full wherever the log is read,
     /// as from `log stream` on a Mac; otherwise, at the default privacy,
@@ -34,11 +51,15 @@ public final class TraceRecorder {
     /// A recorder keeping the last `capacity` interactions.
     public init(capacity: Int = TraceLog.defaultCapacity, logsSummariesPublicly: Bool = false) {
         log = TraceLog(capacity: capacity)
+        shownLog = TraceLog(capacity: capacity)
         self.logsSummariesPublicly = logsSummariesPublicly
     }
 
     /// The interactions it keeps, newest first.
     public var interactions: [TracedInteraction] { log.interactions }
+
+    /// The interactions a trace shows, newest first (`shownLog`).
+    public var shownInteractions: [TracedInteraction] { shownLog.interactions }
 
     /// Begins an interaction with `gesture`, on what `title` says, now, and
     /// gives the trace its events and outcome are written through.
@@ -47,9 +68,35 @@ public final class TraceRecorder {
         return InteractionTrace(id: id, recorder: self)
     }
 
-    /// Forgets every interaction, as the trace's Clear does.
+    /// Forgets every interaction, as the trace's Clear does, which the trace
+    /// shows at once.
     public func clear() {
         log.clear()
+        show()
+    }
+
+    /// The log changed: the trace shows it now, or once the pacing says.
+    private func logChanged() {
+        switch pacing.changed(at: .now) {
+        case .now:
+            show()
+        case .at(let time):
+            showing = Task { @MainActor [weak self] in
+                try? await Task.sleep(until: time, clock: .continuous)
+                guard !Task.isCancelled else { return }
+                self?.show()
+            }
+        case .alreadyDue:
+            break
+        }
+    }
+
+    /// Shows the log as it stands, and whatever showing was due with it.
+    private func show() {
+        showing?.cancel()
+        showing = nil
+        pacing.shown(at: .now)
+        shownLog = log
     }
 
     fileprivate func record(_ name: String, detail: String, in id: TracedInteraction.ID) {
