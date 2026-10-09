@@ -7,6 +7,7 @@ enum LabStations {
             CarryAndFaceStation(),
             BelowTheGazeStation(),
             PressStation(),
+            PluckStation(),
         ]
     }
 }

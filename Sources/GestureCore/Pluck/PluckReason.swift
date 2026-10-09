@@ -17,11 +17,16 @@ public enum PluckReason: Equatable, Sendable {
     /// Held for the hold's time, the container not having scrolled during
     /// the pinch: the item lifts.
     case heldStill
-    /// The hold's time came, but the container scrolled during the pinch,
-    /// as one that caught it coasting: a scroll, and the item stays down.
+    /// The container scrolled during the pinch, as one that caught it
+    /// coasting, or that the scroll view took: before the hold, a scroll,
+    /// and the item stays down; lifted, the item settles, as the tuning says
+    /// (`PluckTuning.scrollSettlesLiftedItem`).
     case containerScrolled
-    /// The hold's time came for a pinch already told: lifted already, or a
-    /// scroll.
+    /// The container scrolled with the item lifted, and the pull under way,
+    /// or the tuning, keeps it up.
+    case scrollLeftTheItemUp
+    /// A word for a pinch already told what it is, lifted already or a
+    /// scroll, which changes nothing.
     case toldAlready
     /// The hold's time came with neither the press nor the drag having the
     /// pinch: let go, or its press ended, before its hold, which lifts
@@ -81,8 +86,117 @@ public enum PluckReason: Equatable, Sendable {
     /// the pinch, and the tuning keeps it lifted
     /// (`PluckTuning.pressEndSettlesLiftedItem`).
     case liftOutlivesItsPress
+    /// The item's tap came as the pinch was let go, its lift kept past its
+    /// press: it settles.
+    case releasedByItsTap
+    /// A pinch began elsewhere in the container while this one's item was
+    /// kept up past its press, neither gesture having it: its end went
+    /// unseen, and its item settles.
+    case pinchElsewhere
     /// The item went mid-pinch: its pull is taken away, and it's let down.
     case itemWent
     /// The word came with no pinch under way, and changed nothing.
     case noPinch
+}
+
+extension PluckReason: CustomStringConvertible {
+    /// The reason's name, as its case is spelled, for telling one kind of
+    /// reason from another whatever its numbers, as a trace does to note a
+    /// drag's words only as their reason changes.
+    public var name: String {
+        switch self {
+        case .began: "began"
+        case .pressJoined: "pressJoined"
+        case .heldStill: "heldStill"
+        case .containerScrolled: "containerScrolled"
+        case .scrollLeftTheItemUp: "scrollLeftTheItemUp"
+        case .toldAlready: "toldAlready"
+        case .letGoBeforeTheHold: "letGoBeforeTheHold"
+        case .armed: "armed"
+        case .armingNotDue: "armingNotDue"
+        case .notANumber: "notANumber"
+        case .movedFirst: "movedFirst"
+        case .withinStillness: "withinStillness"
+        case .scrolling: "scrolling"
+        case .notArmedYet: "notArmedYet"
+        case .notLifted: "notLifted"
+        case .notAPull(let judgement): "notAPull.\(judgement.verdict.rawValue)"
+        case .pulled: "pulled"
+        case .pullMoved: "pullMoved"
+        case .pulledAlready: "pulledAlready"
+        case .dragEnded: "dragEnded"
+        case .dragCancelled: "dragCancelled"
+        case .pressEnded: "pressEnded"
+        case .dragHasThePinch: "dragHasThePinch"
+        case .liftOutlivesItsPress: "liftOutlivesItsPress"
+        case .releasedByItsTap: "releasedByItsTap"
+        case .pinchElsewhere: "pinchElsewhere"
+        case .itemWent: "itemWent"
+        case .noPinch: "noPinch"
+        }
+    }
+
+    /// The reason in a few plain words, with its numbers, for a trace.
+    public var description: String {
+        switch self {
+        case .began: "a pinch began"
+        case .pressJoined: "the press joined the pinch the drag has"
+        case .heldStill: "held still: the item lifts"
+        case .containerScrolled: "the container scrolled during the pinch"
+        case .scrollLeftTheItemUp: "the container scrolled, the item kept up"
+        case .toldAlready: "told already"
+        case .letGoBeforeTheHold: "let go before the hold: no lift"
+        case .armed: "the pull armed"
+        case .armingNotDue: "the arming isn't due"
+        case .notANumber: "a move that isn't a number"
+        case .movedFirst(let distance): "moved \(pluckPoints(distance)) before the hold: a scroll"
+        case .withinStillness(let distance): "\(pluckPoints(distance)) from the touch, within the stillness"
+        case .scrolling(let why): "a scroll (\(why == .movedFirst ? "moved first" : "the container scrolled"))"
+        case .notArmedYet: "lifted, the pull not armed yet"
+        case .notLifted: "the item isn't lifted"
+        case .notAPull(let judgement): "no pull: \(judgement)"
+        case .pulled(let judgement): "pull: \(judgement)"
+        case .pullMoved: "the pull moved"
+        case .pulledAlready: "pulled already"
+        case .dragEnded: "the drag ended"
+        case .dragCancelled: "the drag was cancelled"
+        case .pressEnded: "the press ended"
+        case .dragHasThePinch: "the press ended, the drag has the pinch"
+        case .liftOutlivesItsPress: "the press ended, the lift kept past it"
+        case .releasedByItsTap: "the release tap came: settles"
+        case .pinchElsewhere: "a pinch began elsewhere: settles, its end unseen"
+        case .itemWent: "the item went"
+        case .noPinch: "no pinch under way"
+        }
+    }
+}
+
+extension PluckPullJudgement: CustomStringConvertible {
+    /// The judgement in a few words: "too slanted, 30.0 deep, 120.0 across,
+    /// needs 27.0 pt".
+    public var description: String {
+        let verdict = switch verdict {
+        case .pulls: "pulls"
+        case .tooShallow: "too shallow"
+        case .tooSlanted: "too slanted"
+        case .tooShort: "too short"
+        case .notANumber: "not a number"
+        }
+        return "\(verdict), \(pluckOneDecimal(depth)) deep, \(pluckOneDecimal(drift)) across, needs \(pluckPoints(threshold))"
+    }
+}
+
+/// A distance in points to one decimal: "16.0 pt".
+private func pluckPoints(_ points: Double) -> String {
+    "\(pluckOneDecimal(points)) pt"
+}
+
+/// A number to one decimal, "-3.5", without Foundation's formatting.
+private func pluckOneDecimal(_ number: Double) -> String {
+    guard number.isFinite else { return "\(number)" }
+    let tenths = (number * 10).rounded()
+    let sign = tenths < 0 ? "-" : ""
+    let whole = Int(abs(tenths)) / 10
+    let tenth = Int(abs(tenths)) % 10
+    return "\(sign)\(whole).\(tenth)"
 }

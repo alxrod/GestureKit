@@ -2,7 +2,7 @@ import Testing
 @testable import GestureCore
 
 /// An item's pinches, one at a time, as its two gestures and its tap tell
-/// them, at the default tuning: one account for each pinch as it ends, from
+/// them, at the tuning the pluck first shipped with: one account for each pinch as it ends, from
 /// its first word to its last; a pinch whose press went before anything
 /// else spoke kept until its tap, or the next pinch, says how it ended; the
 /// pull armed `pullArmDelay` after the lift, by the caller's count or the
@@ -25,7 +25,7 @@ import Testing
     /// A press begins a pinch, and the hold counts from it, half a second;
     /// any count to an arming left from the pinch before stops.
     @Test func aPressBeginsAPinchAndItsHoldsCount() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         let told = pinches.pressBegan(at: at(0))
         #expect(told == PluckPinches.Told(why: .began, countdowns: [.stopArming, .startHold(.seconds(0.5))], beganAPinch: true))
         #expect(pinches.touchedAt == at(0))
@@ -35,7 +35,7 @@ import Testing
     /// A quick pinch: its press goes as it's let go, and its tap comes then,
     /// in either order. It's a tap, which goes through.
     @Test func aQuickPinchIsATapThatGoesThrough() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         let tap = pinches.tapped(at: at(0.12))
         #expect(!tap.isRelease)
@@ -59,7 +59,7 @@ import Testing
     /// drag's 15 pt, and the pinch goes on: it's kept until its tap comes as
     /// it's let go, which tells how long it lasted, and stops the counts.
     @Test func aPinchWhosePressWentFirstEndsWithItsTap() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         #expect(pinches.pressEnded(at: at(0.15)) == PluckPinches.Told(why: .pressEnded))
         #expect(pinches.press != nil)
@@ -77,7 +77,7 @@ import Testing
     /// The hold's count, coming up after its press went, finds neither
     /// gesture holding the pinch, and lifts nothing.
     @Test func aHoldAfterThePressWentLiftsNothing() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.pressEnded(at: at(0.15))
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.5)) == PluckPinches.Told(why: .letGoBeforeTheHold))
@@ -87,7 +87,7 @@ import Testing
     /// One kept that way whose tap never comes is told as the next pinch
     /// begins, its end unseen.
     @Test func aPinchWhoseEndWentUnseenIsToldAsTheNextBegins() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.pressEnded(at: at(0.15))
         let next = pinches.pressBegan(at: at(5))
@@ -112,7 +112,7 @@ import Testing
     /// next press begins: its item settles, so the container scrolls again,
     /// and the new pinch begins afresh.
     @Test func aNewPressEndsALiftWhosePressEndWentUnseen() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         let held = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(held == PluckPinches.Told(actions: [.lift], why: .heldStill, countdowns: [.startArming(.seconds(0.2))]))
@@ -131,7 +131,7 @@ import Testing
     /// the press's end has forgotten the pinch, is its release, no tap, and
     /// only the first.
     @Test func aHoldLetGoIsALiftWhoseTapIsSwallowedOnce() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.5)).actions == [.lift])
         let told = pinches.pressEnded(at: at(0.9))
@@ -154,7 +154,7 @@ import Testing
     /// Its tap may come while the hold is under way: it's the release
     /// there, and none is expected after.
     @Test func aTapWhileTheHoldIsUnderWayIsItsReleaseThere() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         let tap = pinches.tapped(at: at(0.8))
@@ -166,7 +166,7 @@ import Testing
 
     @Test func theReleaseGraceLastsASecond() {
         #expect(PluckTuning().releaseTapTime == .seconds(1))
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.pressEnded(at: at(0.9))
@@ -178,7 +178,7 @@ import Testing
     /// after the lift, the next move pulls, and the pinch is one, from its
     /// touch to its release, its tap its release.
     @Test func aHoldThenAPullIsOnePinch() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.5)).actions == [.lift])
         #expect(moved(&pinches, 0, 0, 15, at: 0.6) == PluckPinches.Told(why: .notArmedYet))
@@ -211,7 +211,7 @@ import Testing
     /// The drag's word arms the pull should the caller's count be late, and
     /// pulls at once if the move already counts.
     @Test func theDragArmsThePullWhenTheCountIsLate() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(moved(&pinches, 0, 0, 40, at: 0.75).actions == [.pullArmed, .beginPull])
@@ -221,7 +221,7 @@ import Testing
     /// Before its two tenths are up, neither the count nor the drag arms the
     /// pull.
     @Test func nothingArmsThePullEarly() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(pinches.armPull(at: at(0.65)) == PluckPinches.Told(why: .armingNotDue))
@@ -233,7 +233,7 @@ import Testing
     /// A yank toward the viewer before the hold is a scroll, which lifts and
     /// pulls nothing, and stops the hold's count.
     @Test func aYankBeforeTheHoldIsAScroll() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         let yank = moved(&pinches, 0, 0, 15, at: 0.08)
         #expect(yank == PluckPinches.Told(actions: [.stayDown(.movedFirst)], why: .movedFirst(distance: 15), countdowns: [.stopHold]))
@@ -252,7 +252,7 @@ import Testing
     /// A flat drag the container's scroll view takes over, cancelling the
     /// item's, is a scroll.
     @Test func aScrollIsAScroll() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.pressEnded(at: at(0.06))
         #expect(moved(&pinches, 0, 40, 2, at: 0.1).actions == [.stayDown(.movedFirst)])
@@ -270,7 +270,7 @@ import Testing
     /// A hold that comes after the container scrolled is a scroll, which
     /// lifts nothing and isn't swallowed.
     @Test func aHoldAfterTheContainerScrolledIsAScroll() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         let held = pinches.holdFired(asTheContainerScrolled: true, at: at(0.5))
         #expect(held == PluckPinches.Told(actions: [.stayDown(.containerScrolled)], why: .containerScrolled))
@@ -285,7 +285,7 @@ import Testing
     /// be, pulls nothing, and its item stays up until it's let go: its
     /// container's scroll is off under it. Its tap is no tap.
     @Test func aLiftedPinchSweptUpStaysUpAndPullsNothing() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
@@ -305,7 +305,7 @@ import Testing
     /// and come back: that's no new pinch, the item stays up, and the drag's
     /// end settles it.
     @Test func aPressComingBackMidDragIsNoNewPinch() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = moved(&pinches, 80, 0, 5, at: 0.6)
@@ -323,7 +323,7 @@ import Testing
     /// An item that goes mid-pull, as it leaves its container, takes its
     /// pull away and lets itself down; no tap is expected after.
     @Test func anItemGoingMidPullTakesItsPullAway() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
@@ -342,13 +342,13 @@ import Testing
     }
 
     @Test func anItemGoingWithNothingUnderWayDoesNothing() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         #expect(pinches.itemWent(at: at(1)) == PluckPinches.Told(why: .noPinch))
     }
 
     /// Words with no pinch under way change nothing, and say so.
     @Test func wordsWithNoPinchChangeNothing() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .firstShipped)
         let nothing = PluckPinches.Told(why: .noPinch)
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.5)) == nothing)
         #expect(pinches.armPull(at: at(0.7)) == nothing)

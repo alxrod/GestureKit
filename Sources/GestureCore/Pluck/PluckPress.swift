@@ -247,11 +247,40 @@ public struct PluckPress: Equatable, Sendable {
         return letDown()
     }
 
-    /// The item's tap came as the pinch was let go, after both its press and
-    /// its drag let go of it: a lifted item settles, as one whose press's
-    /// end the tuning kept up.
+    /// The item's tap came as the pinch was let go, its press and its drag
+    /// having let go of it, before its press's end or after: a lifted item
+    /// settles, as one whose press's end the tuning kept up.
     public mutating func releaseTapped() -> [Action] {
-        why = .pressEnded
+        why = .releasedByItsTap
+        return letDown()
+    }
+
+    /// The container began to scroll during the pinch: before the hold, the
+    /// pinch is a scroll for good, and its item stays down; lifted, the item
+    /// settles, unless its pull is under way, or the tuning keeps it up.
+    public mutating func containerScrolled() -> [Action] {
+        if stayedDown != nil || (liftedByHold && !isHeld) {
+            why = .toldAlready
+            return []
+        }
+        guard liftedByHold else {
+            stayedDown = .containerScrolled
+            why = .containerScrolled
+            return [.stayDown(.containerScrolled)]
+        }
+        guard !isPulling, tuning.scrollSettlesLiftedItem else {
+            why = .scrollLeftTheItemUp
+            return []
+        }
+        why = .containerScrolled
+        return letDown()
+    }
+
+    /// A pinch began elsewhere in the container while neither gesture has
+    /// this one: an item kept up past its press settles, its pinch's end
+    /// gone unseen.
+    public mutating func pinchBeganElsewhere() -> [Action] {
+        why = .pinchElsewhere
         return letDown()
     }
 

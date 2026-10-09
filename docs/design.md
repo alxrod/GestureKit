@@ -43,13 +43,15 @@ surfaces, panels, handles, grids, and carried things.
 | Carry | A grab handle carries a thing 1:1 with the hand, by its middle, never nearer the head than 0.3 m. A pinch waits 8 pt before it carries. Core: `CarryPinch`, `HandCarry`, `ViewerCenteredFrame`, `CarryTuning`. Kit: `GrabHandle` and `GrabHandleComponent`, the drag `grabHandleCarry(of:…)` reporting each step through closures, and `grabHandlesCarryEntities(…)` with `CarriedEntity`, which move the entity themselves. Station: Carry and face. |
 | Facing | A thing turns to face the viewer, standing on a point or hanging from one, and keeps its way when the viewer is straight above or below it. Core: `Facing`, `Pose`, `FacingTuning`. Kit: `FacesTheViewerComponent` and its system, frame by frame, and `HeadTracker`, world tracking with the simulator's stand-in (`UntrackedHead`). Station: Carry and face. |
 | Placement | A panel opens below the gaze, a set distance out, tilted up to the head, and stays put until carried by its handle. Core: `GazePlacement`, `PanelHandle`, `PlacementTuning`. Kit: `GazePanel`, which stands a panel below the gaze, and `PanelHandleRig` with `PanelHandlePill`, the pill under a panel and its grab handle. Station: Below the gaze. |
-| Pluck | An item pulled out of a scrolling grid: a pinch that moves first is the grid's scroll; held still, the item lifts and the scroll stops under it; a moment later its pull arms, and a move toward the viewer pulls it out. |
+| Pluck | An item pulled out of a scrolling grid: a pinch that moves first is the grid's scroll; held still, the item lifts and the scroll stops under it; a moment later its pull arms, and a move toward the viewer pulls it out, reported in the immersive space's meters. `pluckContainer` marks the scroll view, `pluckable` each item. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go. |
+| Lift | A view lifted off what it lies on: scaled up and brought toward the viewer on a spring, over its shadow, above its neighbors, coming down without the bounce. The pluck's items show it, and anything a press picks up can. |
 | Press | One pinch on a surface, from its touch, told as a tap, a drag along, a scroll, a drag across, a pickup and carry, or a hold, by how far it moves and how long it's still: held still half a second it picks up, lifting what's drawn; moved 2 cm then, it carries; held a second, it holds. `.surfacePress` on any SwiftUI view or attachment. |
 | Coast | A scroll let go on the move coasts on from the hand's speed, slowing by e every 0.8 s and coming to rest at an end rather than stopping dead; a pinch on it while it still goes 5 cm a second catches it, and is no tap. `CoastRun` runs one on a clock, `CoastEasing` animates by it. |
 | HoldWatch | A pinch on a handle or control held still 0.6 s asks whether the hold means anything there, watched beside the control's own drag and tap, never in front of them, which then do nothing for the rest of the pinch. `.holdWatch` on any SwiftUI view. |
 
 Each area is a folder of its own in GestureCore and in GestureKit, named as
-above, with its tests in `Tests/GestureCoreTests/<Area>/`.
+above, with its tests in `Tests/GestureCoreTests/<Area>/`; Lift, which has no
+rules of its own, is in GestureKit alone.
 
 ## The lab
 

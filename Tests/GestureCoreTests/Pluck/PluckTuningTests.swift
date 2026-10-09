@@ -33,29 +33,78 @@ import Testing
     /// pinch the drag has heard from has moved too far to hold; a pull is
     /// 2 cm out of the plane, 1 deep for every 2 across; the container's
     /// scroll stops under a lifted item, and a scroll beginning settles one;
-    /// the press's end settles one too; and a release tap is waited for a
-    /// second.
-    @Test func theDefaultsAreTheOnesThePluckShippedWith() {
+    /// a release tap is waited for a second; the item's button is the hold,
+    /// beside a simultaneous drag; and what it pulls out stands 100 pt in
+    /// front of the drag, the lift 8% larger and 36 pt nearer. All as the
+    /// pluck first shipped, but that the press's end keeps a lift up.
+    @Test func theDefaults() {
         let tuning = PluckTuning()
+        #expect(PluckTuning.defaults == tuning)
         #expect(tuning.holdDuration == 0.5)
         #expect(tuning.holdStillness == 15)
         #expect(tuning.pullArmDelay == 0.2)
         #expect(tuning.dragStartDistance == 15)
         #expect(tuning.pullDistance == 0.02)
+        #expect(tuning.pullDepthPerDrift == 0.5)
+        #expect(!tuning.pullsAnyDirection)
         #expect(tuning.pullRule == .outOfThePlane(depthPerDrift: 0.5))
         #expect(tuning.depthGrowsTowardViewer)
         #expect(tuning.depthScale == 1)
         #expect(tuning.stopsScrollUnderLiftedItem)
         #expect(tuning.scrollSettlesLiftedItem)
-        #expect(tuning.pressEndSettlesLiftedItem)
+        #expect(!tuning.pressEndSettlesLiftedItem)
         #expect(tuning.releaseTapGrace == 1)
+        #expect(!tuning.holdsFromTheDrag)
+        #expect(tuning.pullDragIsSimultaneous)
+        #expect(tuning.pushTowardViewer == 100)
+        #expect(tuning.liftScale == 1.08)
+        #expect(tuning.liftDepth == 36)
         #expect(tuning.holdTime == .seconds(0.5))
         #expect(tuning.pullArmTime == .seconds(0.2))
+        #expect(PluckTuning.firstShipped == PluckTuning(pressEndSettlesLiftedItem: true))
+    }
+
+    /// The lab can show, save, and copy every value: its parameters are
+    /// sound, and each is its property, in the initializer's order.
+    @Test func itsParametersAreSound() {
+        #expect(PluckTuning.parameterProblems.isEmpty)
+        let swift = PluckTuning.defaults.swiftInitializer()
+        let labels = swift.split(separator: "\n").dropFirst().dropLast().map { line in
+            String(line.trimmingCharacters(in: .whitespaces).prefix { $0 != ":" })
+        }
+        #expect(labels == [
+            "holdDuration", "holdStillness", "pullArmDelay", "dragStartDistance", "pullDistance",
+            "pullDepthPerDrift", "pullsAnyDirection", "depthGrowsTowardViewer", "depthScale",
+            "stopsScrollUnderLiftedItem", "scrollSettlesLiftedItem", "pressEndSettlesLiftedItem",
+            "releaseTapGrace", "holdsFromTheDrag", "pullDragIsSimultaneous", "pushTowardViewer",
+            "liftScale", "liftDepth",
+        ])
+    }
+
+    /// A tuning with every value changed is saved and loaded whole.
+    @Test func everyValueIsSavedAndLoaded() {
+        let tuned = PluckTuning(
+            holdDuration: 0.8, holdStillness: 8, pullArmDelay: 0.3, dragStartDistance: 0, pullDistance: 0.03,
+            pullDepthPerDrift: 0, pullsAnyDirection: true, depthGrowsTowardViewer: false, depthScale: 2,
+            stopsScrollUnderLiftedItem: false, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
+            releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false, pushTowardViewer: 60,
+            liftScale: 1.12, liftDepth: 48
+        )
+        #expect(tuned.tunedValues.count == PluckTuning.parameters.count)
+        #expect(PluckTuning(defaultsTunedWith: tuned.tunedValues) == tuned)
+    }
+
+    /// The pull rule follows the depth per drift, toward the viewer however
+    /// far across at 0, and any way at the switch.
+    @Test func thePullRuleFollowsItsValues() {
+        #expect(PluckTuning(pullDepthPerDrift: 1).pullRule == .outOfThePlane(depthPerDrift: 1))
+        #expect(PluckTuning(pullDepthPerDrift: 0).pullRule == .towardTheViewer)
+        #expect(PluckTuning(pullsAnyDirection: true).pullRule == .anyDirection)
     }
 
     /// A tuning is a value a trace can keep and the lab can send.
     @Test func aTuningRoundTripsThroughJSON() throws {
-        let tuning = PluckTuning(holdDuration: 0.8, holdStillness: 6, dragStartDistance: 0, pullRule: .towardTheViewer, stopsScrollUnderLiftedItem: false)
+        let tuning = PluckTuning(holdDuration: 0.8, holdStillness: 6, dragStartDistance: 0, pullDepthPerDrift: 0, stopsScrollUnderLiftedItem: false)
         let data = try JSONEncoder().encode(tuning)
         #expect(try JSONDecoder().decode(PluckTuning.self, from: data) == tuning)
     }
@@ -178,9 +227,9 @@ import Testing
     @Test func thePullRuleIsTheTunings() {
         var slanted = liftedAndArmed(PluckTuning())
         #expect(moved(&slanted, 0, 200, 40, at: 0.8).actions == [])
-        var toward = liftedAndArmed(PluckTuning(pullRule: .towardTheViewer))
+        var toward = liftedAndArmed(PluckTuning(pullDepthPerDrift: 0))
         #expect(moved(&toward, 0, 200, 40, at: 0.8).actions == [.beginPull])
-        var any = liftedAndArmed(PluckTuning(pullRule: .anyDirection))
+        var any = liftedAndArmed(PluckTuning(pullsAnyDirection: true))
         #expect(moved(&any, 0, 30, 0, at: 0.8).actions == [.beginPull])
     }
 
@@ -227,11 +276,11 @@ import Testing
         #expect(account.pressEndedAfter == .seconds(0.51))
     }
 
-    /// At the default, the same press ending drops the item, and the drag
-    /// that follows begins a pinch of its own, a scroll: the pull never
-    /// comes.
-    @Test func atTheDefaultAPressCancelledAtTheLiftDropsTheItem() throws {
-        var pinches = PluckPinches()
+    /// As the pluck first shipped, the same press ending drops the item, and
+    /// the drag that follows begins a pinch of its own, a scroll: the pull
+    /// never comes.
+    @Test func asFirstShippedAPressCancelledAtTheLiftDropsTheItem() throws {
+        var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         let cancelled = pinches.pressEnded(at: at(0.51))
@@ -277,13 +326,13 @@ import Testing
 
     /// A shorter grace waits less for a lift's release tap.
     @Test func theReleaseGraceIsTheTunings() {
-        var pinches = PluckPinches(tuning: PluckTuning(releaseTapGrace: 0.3))
+        var pinches = PluckPinches(tuning: PluckTuning(pressEndSettlesLiftedItem: true, releaseTapGrace: 0.3))
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.pressEnded(at: at(0.9))
         #expect(!pinches.tapped(at: at(1.25)).isRelease)
 
-        var quick = PluckPinches(tuning: PluckTuning(releaseTapGrace: 0.3))
+        var quick = PluckPinches(tuning: PluckTuning(pressEndSettlesLiftedItem: true, releaseTapGrace: 0.3))
         _ = quick.pressBegan(at: at(0))
         _ = quick.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = quick.pressEnded(at: at(0.9))
