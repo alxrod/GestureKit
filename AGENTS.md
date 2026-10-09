@@ -60,15 +60,17 @@ the order the areas arrive in.
   - `Support/Info.plist`: generated from `project.yml`.
   - `GestureLab/`: the app's sources, a synchronized folder, so adding a
     file needs no regeneration.
-    - `GestureLabApp`: the window and the immersive space; registers every
-      station's components as it starts.
+    - `GestureLabApp`: the window, a station's own window, and the
+      immersive space; registers every station's components as it starts.
     - `LabStation`: what a station is. `LabStations`: the registry, one
       line per station.
     - `LabModel`: the stations, the chosen one, remembered, and whether
       the space is open.
     - `LabWindow`: the station list and the chosen station's window
-      content, tuning, and trace. `LabSpace`: the space's view, and where
-      stations stand (`LabSpace.front`).
+      content, tuning, and trace; it opens the chosen station's own window,
+      if it has one, and closes it as another is chosen
+      (`StationOwnWindow`, its trace in an ornament beside it). `LabSpace`:
+      the space's view, and where stations stand (`LabSpace.front`).
     - `Stations/<Area>/`: each station. `Stations/TraceCheck/` is the
       starter, a cube to pinch, traced, its size tuned live.
 - `scripts/build-check.sh`: the lab's compile check.
@@ -196,6 +198,11 @@ the order the areas arrive in.
 
 2. One line in `LabStations.all()`: `CarryStation(),`.
 3. `scripts/build-check.sh`.
+
+A gesture that lives in a window, as an item in a scrolling grid does, gets
+a window of its own rather than the lab window's scrolling column: give the
+station an `ownWindowTitle`, "grid window", and its `ownWindowContent`, as
+`Stations/Pluck/` does.
 
 `Stations/TraceCheck/TraceCheckStation.swift` is a whole station to copy
 from.

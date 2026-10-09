@@ -8,6 +8,10 @@ final class LabModel {
     /// The immersive space's id.
     static let spaceID = "lab-space"
 
+    /// The id of the window group a station's own window opens in, by the
+    /// station's id.
+    static let stationWindowID = "station-window"
+
     private static let chosenKey = "GestureLab.chosenStation"
 
     /// Every station, as the registry made them.
@@ -31,5 +35,10 @@ final class LabModel {
     /// The chosen station.
     var chosen: any LabStation {
         stations.first { $0.id == chosenID } ?? stations[0]
+    }
+
+    /// The station with `id`, if there is one.
+    func station(withID id: String) -> (any LabStation)? {
+        stations.first { $0.id == id }
     }
 }

@@ -11,8 +11,8 @@ struct PluckLabCard: Identifiable, Equatable {
     var hasLanded: Bool
 }
 
-/// The pluck's station: a grid of numbered items in the window, as a
-/// library's, each pluckable. A pinch that moves first scrolls it; held
+/// The pluck's station: a grid of numbered items in a window of its own, as
+/// a library's, each pluckable, with nothing scrolling around it. A pinch that moves first scrolls it; held
 /// still, an item lifts and the scroll stops; a moment later, a pull toward
 /// you takes it out as a card that stands in the room where it's let go.
 /// Every pinch is traced, each word with why it did what it did, and the
@@ -45,11 +45,14 @@ final class PluckStation: LabStation {
     /// opened gave its own coordinates for the space's.
     private(set) var spaceAppearances = 0
 
-    /// How many items the grid holds: twelve rows of four, enough to scroll
-    /// well.
-    let itemCount = 48
+    /// How many items the grid holds: thirty rows of four at the window's
+    /// size, about eleven windows' worth to scroll.
+    let itemCount = 120
 
-    var windowContent: some View { PluckLabWindow(station: self) }
+    let ownWindowTitle: String? = "grid window"
+
+    var windowContent: some View { PluckLabInstructions(station: self) }
+    var ownWindowContent: some View { PluckLabGridWindow(station: self) }
     var spaceContent: some View { PluckLabSpace(station: self) }
     var tuningContent: some View { TuningPanel(tuning, title: "Pluck") }
 
@@ -108,67 +111,100 @@ private struct PluckLabItem: View {
     let number: Int
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color(hue: Double((number * 7) % 48) / 48, saturation: 0.55, brightness: 0.85))
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(pluckLabColor(of: number))
             .overlay {
                 Text("\(number)")
-                    .font(.system(size: 44, weight: .bold).monospacedDigit())
+                    .font(.system(size: 72, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
                     .shadow(radius: 2)
             }
-            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 18, style: .continuous))
             .hoverEffect(.highlight)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Item \(number)")
     }
 }
 
-/// The pluck's part of the window: how to try it, the cards, and the grid.
-private struct PluckLabWindow: View {
-    let station: PluckStation
+/// An item's color, by its number, so neighbors differ.
+private func pluckLabColor(of number: Int) -> Color {
+    Color(hue: Double((number * 7) % 48) / 48, saturation: 0.55, brightness: 0.85)
+}
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 4)
+/// What the cards in the room come to, in words.
+@MainActor
+private func pluckLabCardsText(_ station: PluckStation) -> String {
+    switch station.cards.count {
+    case 0: "No cards in the room"
+    case 1: "1 card in the room"
+    case let count: "\(count) cards in the room"
+    }
+}
+
+/// The pluck's part of the lab's window: how to try it, and the cards.
+private struct PluckLabInstructions: View {
+    let station: PluckStation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Scroll the grid: a pinch that moves first is its scroll. Pinch an item and hold still: it lifts and the scroll stops. A moment later pull toward you, and it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that moves first is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. A moment later pull toward you, and it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
-                Text(cardsText)
+                Text(pluckLabCardsText(station))
                     .font(.system(size: 22, weight: .semibold).monospacedDigit())
-                if let tapped = station.lastTapped {
-                    Text("Tapped item \(tapped) · \(station.taps)")
-                        .font(.system(size: 18).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
                 Spacer()
                 Button("Clear the room", systemImage: "trash") {
                     station.clearCards()
                 }
                 .disabled(station.cards.isEmpty)
             }
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 2) {
-                    ForEach(1...station.itemCount, id: \.self) { number in
-                        PluckLabItem(number: number)
-                            .aspectRatio(1, contentMode: .fit)
-                            .pluckable(number, title: "item \(number)") { event in
-                                station.handle(event, item: number)
-                            }
-                    }
-                }
-            }
-            .frame(height: 560)
-            .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
-            .id(station.spaceAppearances)
         }
     }
+}
 
-    private var cardsText: String {
-        switch station.cards.count {
-        case 0: "No cards in the room"
-        case 1: "1 card in the room"
-        case let count: "\(count) cards in the room"
+/// The pluck's own window: the grid, edge to edge, in its own scroll view,
+/// in as many columns as fit at 260 pt, 2 pt apart, as a library window's;
+/// and below it, the cards and what was last tapped.
+private struct PluckLabGridWindow: View {
+    let station: PluckStation
+
+    private let columns = [GridItem(.adaptive(minimum: 260), spacing: 2)]
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(1...station.itemCount, id: \.self) { number in
+                    PluckLabItem(number: number)
+                        .aspectRatio(1, contentMode: .fit)
+                        .pluckable(number, title: "item \(number)") { event in
+                            station.handle(event, item: number)
+                        }
+                }
+            }
+        }
+        .pluckContainer(station.container, tuning: station.tuning.tuning, trace: station.trace)
+        .ignoresSafeArea()
+        .id(station.spaceAppearances)
+        // Four columns at the least, as a library window's.
+        .frame(minWidth: 4 * 260 + 3 * 2, minHeight: 500)
+        .ornament(attachmentAnchor: .scene(.bottom), contentAlignment: .top) {
+            HStack(spacing: 20) {
+                Text(pluckLabCardsText(station))
+                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                if let tapped = station.lastTapped {
+                    Text("Tapped item \(tapped) · \(station.taps)")
+                        .font(.system(size: 18).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button("Clear the room", systemImage: "trash") {
+                    station.clearCards()
+                }
+                .disabled(station.cards.isEmpty)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .glassBackgroundEffect()
+            .padding(.top, 16)
         }
     }
 }
@@ -225,7 +261,7 @@ private struct PluckLabCardView: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(Color(hue: Double((card.item * 7) % 48) / 48, saturation: 0.55, brightness: 0.85))
+            .fill(pluckLabColor(of: card.item))
             .overlay {
                 Text("\(card.item)")
                     .font(.system(size: 72, weight: .bold).monospacedDigit())

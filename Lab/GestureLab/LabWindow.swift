@@ -7,10 +7,13 @@ private let logger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category
 /// The lab's window: the stations, each with its summary, and, for the one
 /// chosen, its window content, its tuning, and its trace. It opens the
 /// immersive space as it first appears, and offers to open it again should
-/// it close.
+/// it close; then the chosen station's own window, if it has one, which it
+/// closes as another station is chosen, opening that one's.
 struct LabWindow: View {
     let lab: LabModel
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         NavigationSplitView {
@@ -33,7 +36,7 @@ struct LabWindow: View {
             }
             .navigationTitle("GestureLab")
         } detail: {
-            StationDetail(station: lab.chosen)
+            StationDetail(station: lab.chosen, openOwnWindow: { openOwnWindow(of: lab.chosenID) })
                 .id(lab.chosenID)
                 .toolbar {
                     if !lab.isSpaceOpen {
@@ -45,7 +48,26 @@ struct LabWindow: View {
                     }
                 }
         }
-        .task { await openSpace() }
+        .task {
+            // The space first, so the station's window is made with the
+            // space open, and its geometry gives the space's coordinates.
+            await openSpace()
+            openOwnWindow(of: lab.chosenID)
+        }
+        .onChange(of: lab.chosenID) { old, new in
+            if lab.station(withID: old)?.ownWindowTitle != nil {
+                dismissWindow(id: LabModel.stationWindowID, value: old)
+            }
+            openOwnWindow(of: new)
+        }
+    }
+
+    /// Opens the own window of the station `id`, if it has one, or brings it
+    /// forward.
+    private func openOwnWindow(of id: String) {
+        guard let title = lab.station(withID: id)?.ownWindowTitle else { return }
+        logger.info("Opening the window of its own, \(title, privacy: .public), of the station \(id, privacy: .public)")
+        openWindow(id: LabModel.stationWindowID, value: id)
     }
 
     private func openSpace() async {
@@ -63,10 +85,12 @@ struct LabWindow: View {
     }
 }
 
-/// The chosen station: its title and summary, its window content and its
-/// tuning in a column, and its trace beside them, filling the rest.
+/// The chosen station: its title and summary, a button that opens its own
+/// window if it has one, its window content and its tuning in a column, and
+/// its trace beside them, filling the rest.
 private struct StationDetail: View {
     let station: any LabStation
+    let openOwnWindow: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 24) {
@@ -77,6 +101,9 @@ private struct StationDetail: View {
                     Text(station.summary)
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
+                    if let ownWindowTitle = station.ownWindowTitle {
+                        Button("Open the \(ownWindowTitle)", systemImage: "macwindow", action: openOwnWindow)
+                    }
                     station.windowView
                     station.tuningView
                         .background(.regularMaterial, in: .rect(cornerRadius: 24))
@@ -87,5 +114,29 @@ private struct StationDetail: View {
             TraceView(station.trace)
         }
         .padding(24)
+    }
+}
+
+/// A station's own window: its content, edge to edge, and its trace in an
+/// ornament beside it, so the trace reads while the window is pinched. A
+/// station that has none, as one a later build dropped whose window the
+/// system restored, says so.
+struct StationOwnWindow: View {
+    let lab: LabModel
+    let stationID: String?
+
+    var body: some View {
+        if let id = stationID, let station = lab.station(withID: id), station.ownWindowTitle != nil {
+            station.ownWindowView
+                .ornament(attachmentAnchor: .scene(.trailing), contentAlignment: .leading) {
+                    TraceView(station.trace)
+                        .frame(width: 560, height: 820)
+                        .padding(.leading, 24)
+                }
+        } else {
+            Text("This window belongs to no station. Close it, and choose a station in the lab's window.")
+                .font(.system(size: 22))
+                .padding(40)
+        }
     }
 }
