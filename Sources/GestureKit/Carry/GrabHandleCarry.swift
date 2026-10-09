@@ -68,9 +68,12 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     private let onCarry: @MainActor (GrabHandleCarryMoment<ID>) -> Void
     private let onEnd: @MainActor (GrabHandleCarryMoment<ID>) -> Void
 
-    /// The pinch under way on a handle, from its first change to its end;
-    /// nil between pinches.
-    @State private var underWay: UnderWay?
+    /// The pinch under way on a handle, kept in a reference made once for
+    /// the view: each of a drag's words changes it, and as `@State` each
+    /// change made SwiftUI run this modifier's body again, its gesture and
+    /// all, as a hand moved; through a reference, nothing SwiftUI watches
+    /// changes until the app's own state does.
+    @State private var pinches = Pinches()
 
     /// True while a pinch on a handle is under way. SwiftUI resets it both
     /// when the pinch ends and when it's cancelled, and only the end calls
@@ -101,6 +104,13 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
         self.onBegin = onBegin
         self.onCarry = onCarry
         self.onEnd = onEnd
+    }
+
+    /// Where the pinch under way is kept, from its first change to its end.
+    @MainActor
+    private final class Pinches {
+        /// The pinch under way; nil between pinches.
+        var underWay: UnderWay?
     }
 
     /// A pinch under way: its rule, the handle it's on, its trace, and what
@@ -177,10 +187,10 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     /// Tells the pinch under way on `handle` it has moved `distance` points
     /// from its touch, `translation` in the carried thing's parent's frame.
     private func pinchChanged(on handle: Entity, distance: Double, translation: SIMD3<Float>) {
-        var pinch = underWay ?? begin(on: handle)
+        var pinch = pinches.underWay ?? begin(on: handle)
         if distance.isFinite { pinch.farthest = max(pinch.farthest, distance) }
         let actions = pinch.pinch.move(distance: distance, translation: translation) { grab(handle) }
-        underWay = pinch
+        pinches.underWay = pinch
         perform(actions, distance: distance)
     }
 
@@ -196,20 +206,20 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     /// points.
     private func perform(_ actions: [CarryPinch<ID>.Action], distance: Double) {
         for action in actions {
-            guard var pinch = underWay else { return }
+            guard var pinch = pinches.underWay else { return }
             switch action {
             case .beginCarry(let id):
                 guard case .moving(let grabbed) = pinch.pinch.stage else { continue }
                 pinch.grabbedAt = grabbed.middle
                 pinch.beganAfter = distance
-                underWay = pinch
+                pinches.underWay = pinch
                 pinch.trace?.event("begin", "after \(Self.points(distance)) pt, carries \(grabHandleCarryName(of: id)) from \(carryPlaceText(grabbed.middle))")
                 let moment = GrabHandleCarryMoment(id: id, middle: grabbed.middle, handMoved: .zero, handle: pinch.handle, trace: pinch.trace)
                 guard onBegin(moment) else {
                     pinch.trace?.event("refused", "the carry couldn't begin")
                     pinch.pinch.refuse()
                     pinch.refused = true
-                    underWay = pinch
+                    pinches.underWay = pinch
                     return
                 }
             case .carry(let id, let middle, let handMoved):
@@ -225,11 +235,11 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                         measure: TraceMeasure(Double(hand), "m")
                     )
                 }
-                underWay = pinch
+                pinches.underWay = pinch
                 onCarry(GrabHandleCarryMoment(id: id, middle: middle, handMoved: handMoved, handle: pinch.handle, trace: pinch.trace))
             case .ignore:
                 pinch.beganAfter = distance
-                underWay = pinch
+                pinches.underWay = pinch
                 pinch.trace?.event("ignored", "after \(Self.points(distance)) pt, under nothing to carry")
             case .endCarry:
                 // Ended by `pinchEnded(how:)`, which tells the app.
@@ -241,8 +251,8 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     /// The pinch ended, `how` saying how: a carry it began ends, the app
     /// told where its middle was last put, and the trace finished.
     private func pinchEnded(how: String) {
-        guard var pinch = underWay else { return }
-        underWay = nil
+        guard var pinch = pinches.underWay else { return }
+        pinches.underWay = nil
         let stage = pinch.pinch.stage
         _ = pinch.pinch.end()
         switch stage {
