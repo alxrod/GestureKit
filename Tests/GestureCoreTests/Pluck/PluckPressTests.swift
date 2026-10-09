@@ -25,7 +25,7 @@ import Testing
     }
 
     @Test func thePullsDistanceIs27PointsAtTheTestsScale() {
-        #expect(PluckTuning.firstShipped.pullThreshold(pointsPerMeter: Self.pointsPerMeter) == 27)
+        #expect(PluckTuning.firstShipped.breakFreeThreshold(pointsPerMeter: Self.pointsPerMeter) == 27)
     }
 
     @Test func aPinchHeldStillLifts() {
@@ -96,9 +96,9 @@ import Testing
         #expect(press.armPull() == [.pullArmed])
         #expect(press.why == .armed)
         #expect(press.isArmed)
-        #expect(moved(&press, 5, 0, 61) == [.beginPull])
+        #expect(moved(&press, 5, 0, 61) == [.breakFree])
         #expect(press.isPulling)
-        #expect(press.why == .pulled(PluckPullJudgement(depth: 61, drift: 5, threshold: 27, verdict: .pulls, origin: .touch)))
+        #expect(press.why == .brokeFree(PluckPullJudgement(depth: 61, drift: 5, threshold: 27, verdict: .pulls, origin: .touch)))
     }
 
     /// The pull arms once, and only on a lifted item.
@@ -127,7 +127,7 @@ import Testing
     @Test func anArmedPullComesTowardTheViewerOneDeepForTwoAcross() {
         for (x, y, z) in [(0.0, 0.0, 27.0), (40, 0, 27), (0, 54, 27), (36, 48, 30)] {
             var press = armed()
-            #expect(moved(&press, x, y, z) == [.beginPull], "moved (\(x), \(y), \(z))")
+            #expect(moved(&press, x, y, z) == [.breakFree], "moved (\(x), \(y), \(z))")
         }
         for (x, y, z) in [(54.1, 0.0, 27.0), (36, 48, 29.9), (0, 0, 26.9), (0, 0, -40), (120, 0, 5), (0, -260, 30)] {
             var press = armed()
@@ -156,15 +156,15 @@ import Testing
         #expect(moved(&press, 5, 0, -90) == [])
         #expect(press.isLifted)
         #expect(!press.isPulling)
-        #expect(moved(&press, 120, 0, 61) == [.beginPull])
+        #expect(moved(&press, 120, 0, 61) == [.breakFree])
     }
 
     @Test func aPullMovesWithItsDrag() {
         var press = armed()
         _ = moved(&press, 0, 0, 30)
-        #expect(moved(&press, 10, -40, 90) == [.movePull])
-        #expect(press.why == .pullMoved)
-        #expect(moved(&press, 200, -400, 300) == [.movePull])
+        #expect(moved(&press, 10, -40, 90) == [.carrySpawned])
+        #expect(press.why == .handedToTheCarry)
+        #expect(moved(&press, 200, -400, 300) == [.carrySpawned])
     }
 
     /// A lifted pinch let go without moving, its drag never having spoken,
@@ -184,7 +184,7 @@ import Testing
     @Test func theDragsEndIsThePinchLetGo() {
         var pulled = armed()
         _ = moved(&pulled, 0, 0, 40)
-        #expect(pulled.dragEnded() == [.endPull, .settle])
+        #expect(pulled.dragEnded() == [.releaseSpawned, .settle])
         #expect(pulled.why == .dragEnded)
         #expect(!pulled.isLifted)
         #expect(pulled.pressEnded() == [])
@@ -204,8 +204,8 @@ import Testing
         #expect(press.pressEnded() == [])
         #expect(press.why == .dragHasThePinch)
         #expect(press.isLifted)
-        #expect(moved(&press, 20, 0, 50) == [.beginPull])
-        #expect(press.dragEnded() == [.endPull, .settle])
+        #expect(moved(&press, 20, 0, 50) == [.breakFree])
+        #expect(press.dragEnded() == [.releaseSpawned, .settle])
         #expect(!press.isLifted)
     }
 
@@ -214,7 +214,7 @@ import Testing
     @Test func aCancelledDragTakesItsPullAwayAndSettles() {
         var pulled = armed()
         _ = moved(&pulled, 0, 0, 40)
-        #expect(pulled.dragCancelled() == [.cancelPull, .settle])
+        #expect(pulled.dragCancelled() == [.cancelSpawn, .settle])
         #expect(pulled.why == .dragCancelled)
         #expect(!pulled.isLifted)
 

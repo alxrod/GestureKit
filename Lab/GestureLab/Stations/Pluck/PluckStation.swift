@@ -2,51 +2,66 @@ import GestureKit
 import RealityKit
 import SwiftUI
 
-/// A card for an item pulled out of the grid: which item, where it stands
-/// in the space, and whether it has landed or is still on its way.
+/// A card for an item that broke free of the grid: which item, where it
+/// stands in the space, and whether the pinch that spawned it has let go.
+/// Where it stands is where it spawned, then where it was last let go: its
+/// entity, which the carry moves, has it meanwhile, and the card keeps it
+/// only for an entity made again, as the space opens again.
 struct PluckLabCard: Identifiable, Equatable {
     let id: UUID
     let item: Int
-    var position: SIMD3<Float>
+    var standsAt: SIMD3<Float>
     var hasLanded: Bool
 }
 
 /// The pluck's station: a grid of numbered items in a window of its own, as
 /// a library's, each pluckable, with nothing scrolling around it. A pinch
-/// that scrolls it is its scroll; held still, an item lifts and the scroll
-/// stops; a moment later, a small move any way takes it out as a card that
-/// stands in the room where it's let go.
+/// that scrolls it is its scroll; held still a quarter second, an item lifts
+/// and the scroll stops; lifted, it follows the hand a little, held to its
+/// place, until the hand has gone 2.5 cm, when it breaks free and spawns as
+/// a card at the hand. From there the pluck's part is over: the same pinch
+/// carries the card by the carry's own rules, 1:1, clear of the head, and
+/// the card faces you through the facing system; once let go, it's carried
+/// by the grab handle under it, as any carried panel.
 /// Every pinch is traced, each word with why it did what it did, and the
 /// grid's own scrolls apart, so one pinch's timeline says whether a scroll
-/// lifted, whether the press went at the lift, and what the pull rule made
-/// of each move.
+/// lifted, how far the held item stretched, and when it broke free.
 @MainActor @Observable
 final class PluckStation: LabStation {
     let id = "pluck"
     let title = "Pluck"
     let summary = "Pull a numbered item out of a scrolling grid into the room."
     let tuning = TuningStore<PluckTuning>(namespace: "GestureLab.pluck")
+    let carry = TuningStore<CarryTuning>(namespace: "GestureLab.pluck.carry")
     let trace = TraceRecorder(logsSummariesPublicly: true)
 
     /// The grid's container: the lifted item and the scroll's hold.
     let container = PluckContainerModel()
 
-    /// The cards in the room, landed or on their way. A pull moves its card
-    /// at every step of its drag, so only the space reads them; the windows
-    /// read `cardCount`.
+    /// The cards in the room, landed or still carried by the pinch that
+    /// spawned them: the space makes an entity for each, and moves it
+    /// through the carry, not through these, so the hand's steps change
+    /// nothing observed. The windows read `cardCount`.
     private(set) var cards: [PluckLabCard] = [] {
         didSet {
             if cards.count != cardCount { cardCount = cards.count }
         }
     }
 
-    /// How many cards are in the room, observed apart from where they stand,
-    /// so a pull's moves draw neither window again: read from the cards, they
-    /// drew the grid's window again at every step of a pull.
+    /// How many cards are in the room, observed apart from the cards, so a
+    /// card landing draws neither window again.
     private(set) var cardCount = 0
 
-    /// The card each item's pull under way carries, by the item's number.
-    @ObservationIgnored private var pulling: [Int: UUID] = [:]
+    /// Each card's entity, as the space made it.
+    @ObservationIgnored private var entities: [UUID: Entity] = [:]
+
+    /// Where the carry last put a card's middle before the space made its
+    /// entity, which it stands there as it makes it.
+    @ObservationIgnored private var carriedBeforeItsEntity: [UUID: SIMD3<Float>] = [:]
+
+    /// The card each item's pinch carries, by the item's number, from its
+    /// spawn until it's let go.
+    @ObservationIgnored private var spawning: [Int: UUID] = [:]
 
     /// The last item tapped, and how many taps there have been.
     private(set) var lastTapped: Int?
@@ -63,34 +78,50 @@ final class PluckStation: LabStation {
 
     let ownWindowTitle: String? = "grid window"
 
+    static func registerComponents() {
+        GrabHandle.registerComponents()
+        FacesTheViewerSystem.registerComponentsAndSystem()
+    }
+
     var windowContent: some View { PluckLabInstructions(station: self) }
     var ownWindowContent: some View { PluckLabGridWindow(station: self) }
     var spaceContent: some View { PluckLabSpace(station: self) }
-    var tuningContent: some View { TuningPanel(tuning, title: "Pluck") }
+    var tuningContent: some View {
+        VStack(spacing: 0) {
+            TuningPanel(tuning, title: "Pluck")
+            TuningPanel(carry, title: "Carry, once it's out")
+        }
+    }
 
-    /// Where a card stands when a pull couldn't say where it is: in front of
+    /// Where a card spawns when the pluck couldn't say where: in front of
     /// the station, a little apart by item.
     private func fallbackPosition(for item: Int) -> SIMD3<Float> {
         LabSpace.front + SIMD3(Float(item % 4) * 0.12 - 0.18, 0, 0.2)
     }
 
-    /// What happened to `item`, as its pluck says.
+    /// What happened to `item`, as its pluck says: a spawn makes its card,
+    /// and from there the carry stands it.
     func handle(_ event: PluckEvent, item: Int) {
         switch event {
         case .tapped:
             lastTapped = item
             taps += 1
-        case .pullBegan(let position):
-            let card = PluckLabCard(id: UUID(), item: item, position: position ?? fallbackPosition(for: item), hasLanded: false)
+        case .spawned(let place):
+            let card = PluckLabCard(id: UUID(), item: item, standsAt: place ?? fallbackPosition(for: item), hasLanded: false)
             cards.append(card)
-            pulling[item] = card.id
-        case .pullMoved(let position):
-            move(item, to: position, landing: false)
-        case .pullEnded(let position):
-            move(item, to: position, landing: true)
-            pulling[item] = nil
-        case .pullCancelled:
-            if let id = pulling.removeValue(forKey: item) {
+            spawning[item] = card.id
+        case .carried(let middle, _):
+            guard let id = spawning[item] else { return }
+            stand(id, carriedTo: middle)
+        case .released(let place):
+            guard let id = spawning.removeValue(forKey: item) else { return }
+            if let place { stand(id, carriedTo: place) }
+            if let index = cards.firstIndex(where: { $0.id == id }) {
+                cards[index].hasLanded = true
+                if let entity = entities[id] { cards[index].standsAt = entity.position }
+            }
+        case .spawnCancelled:
+            if let id = spawning.removeValue(forKey: item) {
                 cards.removeAll { $0.id == id }
             }
         case .lifted, .settled:
@@ -98,22 +129,73 @@ final class PluckStation: LabStation {
         }
     }
 
-    private func move(_ item: Int, to position: SIMD3<Float>?, landing: Bool) {
-        guard let id = pulling[item], let index = cards.firstIndex(where: { $0.id == id }) else { return }
-        if let position { cards[index].position = position }
-        if landing { cards[index].hasLanded = true }
+    /// Stands card `id`'s entity carried by its middle to `middle`, in the
+    /// space, by the carry's rule: clear of the head and facing it
+    /// (`CarriedEntity.stand`). Before the space has made its entity, the
+    /// place waits for it.
+    private func stand(_ id: UUID, carriedTo middle: SIMD3<Float>) {
+        guard let entity = entities[id] else {
+            carriedBeforeItsEntity[id] = middle
+            return
+        }
+        CarriedEntity.stand(entity, carriedTo: middle, facingHeadAt: HeadTracker.shared.viewerPosition(), tuning: carry.tuning)
     }
+
+    /// Makes an entity under `root` for each card that has none, from its
+    /// attachments in `attachments`: the card, its pill under it, the grab
+    /// handle in front of the pill, and facing the viewer as the head moves,
+    /// standing where the card stands, or where the carry has put it since;
+    /// and takes away the entities of cards that went.
+    func showCards(under root: Entity, attachments: RealityViewAttachments) {
+        let shown = Set(cards.map(\.id))
+        for (id, entity) in entities where !shown.contains(id) {
+            entity.removeFromParent()
+            entities[id] = nil
+            carriedBeforeItsEntity[id] = nil
+        }
+        for card in cards where entities[card.id] == nil {
+            guard let view = attachments.entity(for: card.id) else { continue }
+            let entity = Entity()
+            entity.name = card.id.uuidString
+            entity.addChild(view)
+            let rig = PanelHandleRig(under: entity, carrying: entity.name, panelHeight: PluckLabCardView.side)
+            if let pill = attachments.entity(for: Self.pillID(of: card.id)) {
+                rig.hang(pill: pill)
+            }
+            entity.components.set(FacesTheViewerComponent())
+            root.addChild(entity)
+            entity.position = card.standsAt
+            entities[card.id] = entity
+            stand(card.id, carriedTo: carriedBeforeItsEntity.removeValue(forKey: card.id) ?? card.standsAt)
+        }
+    }
+
+    /// A card was let go by the grab handle under it: it stands where its
+    /// entity does.
+    func cardLetGo(_ entity: Entity) {
+        guard let index = cards.firstIndex(where: { $0.id.uuidString == entity.name }) else { return }
+        cards[index].standsAt = entity.position
+    }
+
+    /// The id of card `id`'s pill's attachment.
+    static func pillID(of id: UUID) -> String { "\(id.uuidString)-pill" }
 
     /// Takes every card out of the room.
     func clearCards() {
         cards.removeAll()
-        pulling.removeAll()
+        spawning.removeAll()
     }
 
     /// The space appeared: the grid is made again, so its items' geometry
     /// is the open space's.
     func spaceAppeared() {
         spaceAppearances += 1
+    }
+
+    /// The space went: its entities with it.
+    func spaceDisappeared() {
+        entities.removeAll()
+        carriedBeforeItsEntity.removeAll()
     }
 }
 
@@ -159,7 +241,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still: it lifts, and the scroll stops. Then move your hand any way, about half a centimeter from where it was as the item lifted, and once the pull arms, a moment after the lift, it comes out as a card that stands where you let go. The trace shows each pinch, each word with why it did what it did, and each scroll of the grid.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch that scrolls it is its scroll. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand any way and the lifted item follows a little, held to its place, pulling harder the farther you go. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. The trace shows each pinch: the hold, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
@@ -235,14 +317,11 @@ private struct PluckLabGridStatus: View {
     }
 }
 
-/// The pluck's part of the space: each card pulled out, standing where it
-/// is, turned to face where a standing person's head would be.
+/// The pluck's part of the space: each card that broke free of the grid,
+/// carried by the pinch that spawned it, then by the grab handle under it,
+/// facing the viewer as the head moves.
 private struct PluckLabSpace: View {
     let station: PluckStation
-
-    /// Where the cards turn to face: above the space's origin, at a standing
-    /// person's eyes.
-    private static let viewer = SIMD3<Float>(0, 1.5, 0)
 
     var body: some View {
         let cards = station.cards
@@ -252,37 +331,34 @@ private struct PluckLabSpace: View {
             content.add(root)
         } update: { content, attachments in
             guard let root = content.entities.first(where: { $0.name == "pluck-lab-cards" }) else { return }
-            let shown = Set(cards.map { $0.id.uuidString })
-            for child in Array(root.children) where !shown.contains(child.name) {
-                child.removeFromParent()
-            }
-            for card in cards {
-                guard let entity = attachments.entity(for: card.id) else { continue }
-                entity.name = card.id.uuidString
-                if entity.parent !== root { root.addChild(entity) }
-                entity.position = card.position
-                entity.orientation = Self.facingTheViewer(from: card.position)
-            }
+            station.showCards(under: root, attachments: attachments)
         } attachments: {
             ForEach(cards) { card in
                 Attachment(id: card.id) {
                     PluckLabCardView(card: card)
                 }
+                Attachment(id: PluckStation.pillID(of: card.id)) {
+                    PanelHandlePill(label: "Move card \(card.item)")
+                }
             }
         }
+        .grabHandlesCarryEntities(tuning: station.carry.tuning, recorder: station.trace) { entity in
+            station.cardLetGo(entity)
+        }
+        .task {
+            await HeadTracker.shared.start()
+        }
         .onAppear { station.spaceAppeared() }
-    }
-
-    /// Turned about the vertical to face the viewer from `position`.
-    private static func facingTheViewer(from position: SIMD3<Float>) -> simd_quatf {
-        let toward = viewer - position
-        return simd_quatf(angle: atan2(toward.x, toward.z), axis: [0, 1, 0])
+        .onDisappear { station.spaceDisappeared() }
     }
 }
 
-/// A card in the room: its item's color and number, faint while its pull is
-/// on its way.
+/// A card in the room: its item's color and number, faint while the pinch
+/// that spawned it still carries it.
 private struct PluckLabCardView: View {
+    /// Its side, in points.
+    static let side = 220.0
+
     let card: PluckLabCard
 
     var body: some View {
@@ -293,7 +369,7 @@ private struct PluckLabCardView: View {
                     .font(.system(size: 72, weight: .bold).monospacedDigit())
                     .foregroundStyle(.white)
             }
-            .frame(width: 220, height: 220)
+            .frame(width: Self.side, height: Self.side)
             .opacity(card.hasLanded ? 1 : 0.7)
     }
 }

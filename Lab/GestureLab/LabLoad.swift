@@ -16,8 +16,8 @@ private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", c
 ///   20 a second, a new pinch every 15.
 /// - `tuning`: the chosen station's first number slid back and forth across
 ///   its range, as a slider dragged, its value set 60 times a second.
-/// - `pull`: the pluck's card pulled out of item after item, moving 90 times
-///   a second for 2 s each, as a pull's drag moves it.
+/// - `pull`: the pluck's card spawned from item after item and carried, 90
+///   steps a second for 2 s each, as the pinch that spawned it carries it.
 /// - `scroll`: the pluck's grid scrolled up and down its length at 1,500 pt
 ///   a second, as a flick moves it.
 /// - `drag`: the press's playhead moved along its surface 90 times a second,
@@ -114,13 +114,16 @@ enum LabLoad: String, CaseIterable {
         while !Task.isCancelled {
             let start = LabSpace.front + SIMD3(0, 0, 0.3)
             station.handle(.lifted, item: item)
-            station.handle(.pullBegan(start), item: item)
+            station.handle(.spawned(at: start), item: item)
+            var middle = start
             for frame in 1...180 {
                 try? await Task.sleep(for: .milliseconds(11))
                 let angle = Float(frame) / 90 * .pi
-                station.handle(.pullMoved(start + SIMD3(cos(angle) * 0.2 - 0.2, sin(angle) * 0.1, 0)), item: item)
+                let handMoved = SIMD3(cos(angle) * 0.2 - 0.2, sin(angle) * 0.1, 0)
+                middle = start + handMoved
+                station.handle(.carried(middle: middle, handMoved: handMoved), item: item)
             }
-            station.handle(.pullEnded(start), item: item)
+            station.handle(.released(at: middle), item: item)
             station.handle(.settled, item: item)
             if station.cards.count >= 4 { station.clearCards() }
             item = item % station.itemCount + 1

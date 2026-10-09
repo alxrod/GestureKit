@@ -43,8 +43,8 @@ surfaces, panels, handles, grids, and carried things.
 | Carry | A grab handle carries a thing 1:1 with the hand, by its middle, never nearer the head than 0.3 m. A pinch waits 8 pt before it carries. Core: `CarryPinch`, `HandCarry`, `ViewerCenteredFrame`, `CarryTuning`. Kit: `GrabHandle` and `GrabHandleComponent`, the drag `grabHandleCarry(of:…)` reporting each step through closures, and `grabHandlesCarryEntities(…)` with `CarriedEntity`, which move the entity themselves. Station: Carry and face. |
 | Facing | A thing turns to face the viewer, standing on a point or hanging from one, and keeps its way when the viewer is straight above or below it. Core: `Facing`, `Pose`, `FacingTuning`. Kit: `FacesTheViewerComponent` and its system, frame by frame, and `HeadTracker`, world tracking with the simulator's stand-in (`UntrackedHead`). Station: Carry and face. |
 | Placement | A panel opens below the gaze, a set distance out, tilted up to the head, and stays put until carried by its handle. Core: `GazePlacement`, `PanelHandle`, `PlacementTuning`. Kit: `GazePanel`, which stands a panel below the gaze, and `PanelHandleRig` with `PanelHandlePill`, the pill under a panel and its grab handle. Station: Below the gaze. |
-| Pluck | An item pulled out of a scrolling grid: a pinch the grid scrolls with, as its scroll view says, or that moves 40 pt before its hold, is the grid's scroll; held still half a second, the item lifts and the scroll stops under it; two tenths of a second later its pull arms, and a move of 6 mm, about 8 pt, any way from where the pinch stood as the item lifted pulls it out, so drift during the hold doesn't count and a hand that comes out as the item lifts does, reported in the immersive space's meters. The drag's depth came through too coarse on the headset for a pull that asks for depth, and a fresh pinch settles about 15 pt, which once made it a scroll; measuring from the arming, and the first-shipped rules, 2 cm toward the viewer from the touch, stay as switches. `pluckContainer` marks the scroll view, `pluckable` each item. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go. |
-| Lift | A view lifted off what it lies on: scaled up and brought toward the viewer on a spring, over its shadow, above its neighbors, coming down without the bounce. The pluck's items show it, and anything a press picks up can. |
+| Pluck | An item pulled out of a scrolling grid: a pinch the grid scrolls with, as its scroll view says, or that moves 40 pt before its hold, is the grid's scroll; held still a quarter second, the item lifts and the scroll stops under it. Lifted, it stays in the grid, held: it follows the hand a little, half the move at first and easing toward 20 pt, as a scroll view's content follows a pinch past its end (`PluckTether`), and the trace says how far the hand has gone of what it needs ("15.0 pt of 34.0 to break free"). Once the hand has gone 2.5 cm, 34 pt at a window's own size, any way from where it stood as the item lifted, and two tenths of a second have passed since the lift, the item breaks free and spawns into the room at the hand; let go before that, it settles, with nothing spawned and no tap. The break-free distance is the hand's: the drag's points are divided by the scale the window is drawn at. The pluck ends at the spawn, handing the pinch to a carry (below). Alex asked for the quarter second and the sticky lift on October 9, the half-second hold having felt long and the 6 mm pull then spawning the item the instant it lifted; that tuning, and the first-shipped 2 cm toward the viewer from the touch, stay a few values away. `pluckContainer` marks the scroll view, `pluckable` each item, reporting its tap, its lift, `.spawned(at:)`, each `.carried(middle:handMoved:)` step, and `.released(at:)`. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go. |
+| Lift | A view lifted off what it lies on: scaled up and brought toward the viewer on a spring, over its shadow, above its neighbors, coming down without the bounce; and drawn a little way along with a pinch that tugs it, on a quick spring, springing back as it lets go (`liftFollowEffect`). The pluck's items show it, and anything a press picks up can. |
 | Press | One pinch on a surface, from its touch, told as a tap, a drag along, a scroll, a drag across, a pickup and carry, or a hold, by how far it moves and how long it's still: held still half a second it picks up, lifting what's drawn; moved 2 cm then, it carries; held a second, it holds. `.surfacePress` on any SwiftUI view or attachment. |
 | Coast | A scroll let go on the move coasts on from the hand's speed, slowing by e every 0.8 s and coming to rest at an end rather than stopping dead; a pinch on it while it still goes 5 cm a second catches it, and is no tap. `CoastRun` runs one on a clock, `CoastEasing` animates by it. |
 | HoldWatch | A pinch on a handle or control held still 0.6 s asks whether the hold means anything there, watched beside the control's own drag and tap, never in front of them, which then do nothing for the rest of the pinch. `.holdWatch` on any SwiftUI view. |
@@ -52,6 +52,35 @@ surfaces, panels, handles, grids, and carried things.
 Each area is a folder of its own in GestureCore and in GestureKit, named as
 above, with its tests in `Tests/GestureCoreTests/<Area>/`; Lift, which has no
 rules of its own, is in GestureKit alone.
+
+### How a pluck hands over to a carry
+
+A pluck owns its pinch up to the spawn: the hold, the lift, the held
+stretch, the break-free, and where what breaks free spawns, the drag's place
+pushed 100 pt toward the viewer, in the immersive space's meters. From the
+spawn on, the same pinch is a carry's, and the pluck has no movement math of
+its own:
+
+    pinch ── held 0.25 s ──▶ lifted, held: the item follows on its tether
+          ── 2.5 cm, armed ──▶ .spawned(at:): the pluck's part ends
+          ── each move ──▶ PluckHandoff → CarryPinch → .carried(middle:handMoved:)
+                                                     → CarriedEntity.stand
+          ── let go ──▶ .released(at:); later pinches: its own grab handle
+
+- `PluckHandoff`, in GestureCore, begins GestureCore's `CarryPinch` at the
+  spawn, its middle where it spawned, and hands it each of the hand's
+  moves, so the middle goes 1:1 with the hand from where it spawned, by the
+  carry's rule. Its tests run a pluck through its break-free into the
+  handoff, and the handoff's middle through `HandCarry.pose`.
+- The adapter reports each of the carry's steps as
+  `.carried(middle:handMoved:)`, which the app stands by the carry's and
+  facing's own code, `CarriedEntity.stand`: clear of the head (`HandCarry`),
+  facing the viewer (`Facing`). Where the app keeps state of its own, it
+  stands the thing there instead, by `HandCarry.pose`.
+- Let go, the thing is the app's. Give it a grab handle (`PanelHandleRig`,
+  `GrabHandle`) and `grabHandlesCarryEntities` carries it from then on, and
+  a `FacesTheViewerComponent` keeps it facing the viewer as they move. The
+  Pluck station's cards do all three.
 
 ## The lab
 

@@ -120,7 +120,9 @@ import Testing
         #expect(pinches.containerScrolled(at: at(0.7)) == PluckPinches.Told(why: .toldAlready))
     }
 
-    /// A scroll leaves a pull under way, or a lift the tuning keeps, up.
+    /// A scroll leaves a pull under way, or a lift the tuning keeps, up: 40
+    /// pt from the touch breaks free at 1,350 pt to the meter, past 2.5 cm's
+    /// 33.75.
     @Test func aScrollLeavesAPullOrATunedLiftUp() {
         var pulling = lifted()
         _ = pulling.armPull(at: at(0.7))
@@ -139,12 +141,12 @@ import Testing
         #expect(PluckReason.movedFirst(distance: 45, stillness: 40).description == "moved 45.0 pt before the hold, its stillness 40.0 pt: a scroll")
         #expect(PluckReason.withinStillness(distance: 15.06, stillness: 40).description == "15.1 pt from the touch, within the hold's 40.0 pt stillness")
         let slanted = PluckPullJudgement(depth: 30, drift: 40, threshold: 27, verdict: .tooSlanted, origin: .touch)
-        #expect(PluckReason.notAPull(slanted).description == "no pull: too slanted, 50.0 pt from the touch (30.0 deep, 40.0 across), needs 27.0 pt")
+        #expect(PluckReason.notAPull(slanted).description == "held: too slanted, 50.0 pt from the touch (30.0 deep, 40.0 across), needs 27.0 pt")
         #expect(PluckPullJudgement(depth: -3.04, drift: 0, threshold: 27, verdict: .tooShallow, origin: .touch).description == "too shallow, 3.0 pt from the touch (-3.0 deep, 0.0 across), needs 27.0 pt")
         let short = PluckPullJudgement(depth: 5.3, drift: 1.6, threshold: 8.16, verdict: .tooShort, origin: .arming)
-        #expect(PluckReason.notAPull(short).description == "no pull: too short, 5.5 pt from where it armed (5.3 deep, 1.6 across), needs 8.2 pt")
+        #expect(PluckReason.notAPull(short).description == "held: too short, 5.5 pt from where it armed (5.3 deep, 1.6 across), needs 8.2 pt")
         let pulled = PluckPullJudgement(depth: 4.2, drift: 14.5, threshold: 8.16, verdict: .pulls, origin: .lift)
-        #expect(PluckReason.pulled(pulled).description == "pull: pulls, 15.1 pt from where it lifted (4.2 deep, 14.5 across), needs 8.2 pt")
+        #expect(PluckReason.brokeFree(pulled).description == "broke free: far enough, 15.1 pt from where it lifted (4.2 deep, 14.5 across), needs 8.2 pt")
     }
 
     /// A reason's name tells one kind from another whatever its numbers.

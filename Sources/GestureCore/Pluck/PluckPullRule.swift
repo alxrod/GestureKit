@@ -1,8 +1,8 @@
-/// Which moves of an armed pinch pull its item out of its container, each
-/// judged as a move from where the tuning measures it (`PluckPullOrigin`),
-/// in the item's points, with +z toward the viewer.
+/// Which moves of a lifted pinch break its item free of its container, once
+/// its pull has armed, each judged as a move from where the tuning measures
+/// it (`PluckPullOrigin`), in the item's points, with +z toward the viewer.
 public enum PluckPullRule: Equatable, Sendable, Codable {
-    /// At least the pull's distance toward the viewer, and at least
+    /// At least the break-free distance toward the viewer, and at least
     /// `depthPerDrift` deep for each unit it drifts across the container's
     /// plane, x and y measured as one distance. At 0.5, 1 deep for every 2
     /// across, a move must leave the plane at about 27° or more: the rule
@@ -15,21 +15,21 @@ public enum PluckPullRule: Equatable, Sendable, Codable {
     /// it, still pulls nothing.
     case outOfThePlane(depthPerDrift: Double)
 
-    /// At least the pull's distance toward the viewer, however far it
+    /// At least the break-free distance toward the viewer, however far it
     /// drifts across: for trying whether the slant `outOfThePlane` asks for
     /// turns natural pulls away.
     case towardTheViewer
 
-    /// At least the pull's distance any way, across or in depth, toward the
-    /// viewer or away: the default. A lifted item's container no longer
+    /// At least the break-free distance any way, across or in depth, toward
+    /// the viewer or away: the default. A lifted item's container no longer
     /// scrolls under it, so no move of its pinch can be a scroll, and on the
     /// headset the drag's depth comes through small and coarse, in steps of
     /// about 4 pt, while a hand coming out drifts across as far or farther,
     /// so a rule that asks for depth turns most real pulls away.
     case anyDirection
 
-    /// Judges `move`, an armed pinch's move from `origin`, in the item's
-    /// points with +z toward the viewer, against `threshold`, the pull's
+    /// Judges `move`, a lifted pinch's move from `origin`, in the item's
+    /// points with +z toward the viewer, against `threshold`, the break-free
     /// distance in the same points.
     public func judge(_ move: SIMD3<Double>, threshold: Double, from origin: PluckPullOrigin) -> PluckPullJudgement {
         let (x, y, z) = (move.x, move.y, move.z)
@@ -56,6 +56,16 @@ public enum PluckPullRule: Equatable, Sendable, Codable {
     /// Whether `move` pulls, at `threshold`: the judgement's verdict alone.
     public func isPull(_ move: SIMD3<Double>, threshold: Double) -> Bool {
         judge(move, threshold: threshold, from: .touch).isPull
+    }
+
+    /// How far `judgement`'s move went toward breaking free, by this rule's
+    /// own measure, in the item's points: its distance any way, for
+    /// `anyDirection`; how far it came toward the viewer, for the rules that
+    /// ask for depth, none for a move away. What a trace says a held pinch
+    /// has stretched, "12 pt of 34 to break free".
+    public func reach(of judgement: PluckPullJudgement) -> Double {
+        let reach = self == .anyDirection ? judgement.distance : judgement.depth
+        return reach.isFinite ? max(reach, 0) : 0
     }
 }
 
@@ -88,14 +98,14 @@ public struct PluckPullJudgement: Equatable, Sendable, Codable {
     public enum Verdict: String, Equatable, Sendable, Codable {
         /// It pulls the item out.
         case pulls
-        /// It came toward the viewer less than the pull's distance, or went
-        /// away from the viewer.
+        /// It came toward the viewer less than the break-free distance, or
+        /// went away from the viewer.
         case tooShallow
         /// It came far enough toward the viewer, but drifted across the
         /// container's plane more than its depth allows.
         case tooSlanted
-        /// It moved less than the pull's distance any way: `anyDirection`'s
-        /// only refusal.
+        /// It moved less than the break-free distance any way:
+        /// `anyDirection`'s only refusal.
         case tooShort
         /// Something in it, or the threshold, isn't a number.
         case notANumber
@@ -107,7 +117,7 @@ public struct PluckPullJudgement: Equatable, Sendable, Codable {
     /// How far it drifted across the container's plane, in the item's
     /// points, x and y as one distance.
     public var drift: Double
-    /// The pull's distance, in the item's points.
+    /// The break-free distance, in the item's points.
     public var threshold: Double
     /// Whether it pulls, or why not.
     public var verdict: Verdict

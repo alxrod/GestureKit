@@ -1,13 +1,15 @@
 import Testing
 @testable import GestureCore
 
-/// The pluck at its defaults, as the lab's traces on the headset asked for:
-/// the hold given up only by a real scroll of the container, or a move of
-/// 40 pt, never by the drag's first word; and, once the item is lifted and
-/// its pull armed, a move of 6 mm any way from where the pinch stood as it
-/// lifted pulls it out. The replays at the end are the trace's own pinches,
-/// at the headset's 1,360 pt to the meter, where 6 mm is 8.16 pt.
-@Suite struct PluckDefaultsTests {
+/// The pluck as Alex tried it in the lab on October 9 (`PluckTuning.notSticky`),
+/// still three values away from today's defaults: the hold given up only by
+/// a real scroll of the container, or a move of 40 pt, never by the drag's
+/// first word, as at the defaults; and, once the item is lifted and its pull
+/// armed, a move of 6 mm any way from where the pinch stood as it lifted
+/// pulls it out, the item following nothing. The replays at the end are the
+/// trace's own pinches, at the headset's 1,360 pt to the meter, where 6 mm
+/// is 8.16 pt.
+@Suite struct PluckSmallPullTests {
     let start = ContinuousClock.now
     /// The points the headset measured to a meter at the grid window's own
     /// size: its trace said 2 cm needs 27.2 pt.
@@ -17,12 +19,20 @@ import Testing
         start.advanced(by: .seconds(seconds))
     }
 
+    /// The not-sticky tuning, its pull measured from elsewhere.
+    func notSticky(measuresPullFromLift: Bool, measuresPullFromArming: Bool = false) -> PluckTuning {
+        var tuning = PluckTuning.notSticky
+        tuning.measuresPullFromLift = measuresPullFromLift
+        tuning.measuresPullFromArming = measuresPullFromArming
+        return tuning
+    }
+
     func moved(_ pinches: inout PluckPinches, _ x: Double, _ y: Double, _ z: Double, at seconds: Double) -> PluckPinches.Told {
         pinches.dragMoved(SIMD3(x, y, z), pointsPerMeter: pointsPerMeter, at: at(seconds))
     }
 
     @Test func thePullIsAbout8PointsOnTheHeadset() {
-        let threshold = PluckTuning().pullThreshold(pointsPerMeter: pointsPerMeter)
+        let threshold = PluckTuning.notSticky.breakFreeThreshold(pointsPerMeter: pointsPerMeter)
         #expect(abs(threshold - 8.16) < 1e-9)
     }
 
@@ -31,7 +41,7 @@ import Testing
     /// A hand that has just pinched settles about 15 pt, which the drag
     /// reports as its first word: the hold goes on, and lifts.
     @Test func aDriftOf15PointsBeforeTheHoldDoesntStopTheLift() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         let drift = moved(&pinches, 3, 15, 0, at: 0.2)
         #expect(drift.actions == [])
@@ -50,7 +60,7 @@ import Testing
     /// nothing, should the hold's count come anyway.
     @Test func aRealScrollStopsTheLift() throws {
         var container = PluckContainer<Int>()
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = container.scrollPhaseChanged(to: .tracking, at: at(0.05))
         #expect(moved(&pinches, 0, 15.5, 0, at: 0.15).actions == [])
@@ -72,7 +82,7 @@ import Testing
         var container = PluckContainer<Int>()
         _ = container.scrollPhaseChanged(to: .interacting, at: at(-0.6))
         _ = container.scrollPhaseChanged(to: .decelerating, at: at(-0.3))
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = container.scrollPhaseChanged(to: .idle, at: at(0.05))
         let held = pinches.holdFired(asTheContainerScrolled: container.scrolled(since: at(0)), at: at(0.5))
@@ -83,7 +93,7 @@ import Testing
     /// the hold lifts.
     @Test func trackingAPinchIsNoScroll() {
         var container = PluckContainer<Int>()
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = container.scrollPhaseChanged(to: .tracking, at: at(0.05))
         #expect(!container.scrolled(since: at(0)))
@@ -93,7 +103,7 @@ import Testing
     /// A move of 40 pt before the hold, as a yank toward the viewer, is
     /// still a scroll, and pulls nothing however far it goes.
     @Test func aMoveOf40PointsBeforeTheHoldIsAScroll() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         #expect(moved(&pinches, 10, 8, 25, at: 0.15).actions == [])
         let yank = moved(&pinches, 10, 8, 38, at: 0.25)
@@ -109,7 +119,7 @@ import Testing
     /// Lifted and armed, a small move sideways, 8.2 pt from where the pinch
     /// stood as the item lifted, pulls the item out; 5 pt doesn't.
     @Test func anArmedLiftedItemPullsOnASmallSidewaysMove() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = moved(&pinches, 0, 16, 0, at: 0.3)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
@@ -119,22 +129,22 @@ import Testing
         #expect(short.actions == [])
         #expect(short.why == .notAPull(PluckPullJudgement(depth: 0, drift: 5, threshold: 8.16, verdict: .tooShort, origin: .lift)))
         let pull = moved(&pinches, 8.2, 16, 0, at: 0.8)
-        #expect(pull.actions == [.beginPull])
-        #expect(moved(&pinches, 60, 40, 0, at: 1).actions == [.movePull])
-        #expect(pinches.dragEnded(at: at(1.2)).actions == [.endPull, .settle])
+        #expect(pull.actions == [.breakFree])
+        #expect(moved(&pinches, 60, 40, 0, at: 1).actions == [.carrySpawned])
+        #expect(pinches.dragEnded(at: at(1.2)).actions == [.releaseSpawned, .settle])
     }
 
     /// Any way: up, down, toward the viewer, or away, 8.2 pt from where it
     /// lifted pulls.
     @Test func everyWayPulls() {
         for move in [SIMD3(0.0, -8.2, 0), SIMD3(0, 8.2, 0), SIMD3(-8.2, 0, 0), SIMD3(0, 0, 8.2), SIMD3(0, 0, -8.2), SIMD3(5, 5, 5)] {
-            var pinches = PluckPinches()
+            var pinches = PluckPinches(tuning: .notSticky)
             _ = pinches.pressBegan(at: at(0))
             _ = moved(&pinches, 0, 20, 0, at: 0.3)
             _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
             _ = pinches.armPull(at: at(0.7))
             let told = pinches.dragMoved(SIMD3(0, 20, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.8))
-            #expect(told.actions == [.beginPull], "moved \(move)")
+            #expect(told.actions == [.breakFree], "moved \(move)")
         }
     }
 
@@ -143,59 +153,59 @@ import Testing
     /// next word is a point away. Measured from the touch, as first shipped,
     /// the same word pulls at once.
     @Test func aHandThatDriftedDuringTheHoldDoesntPullTheInstantItArms() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = moved(&pinches, 0, 30, 0, at: 0.45)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
         #expect(moved(&pinches, 0, 31, 0, at: 0.72).actions == [])
-        #expect(moved(&pinches, 0, 38.2, 0, at: 0.8).actions == [.beginPull])
+        #expect(moved(&pinches, 0, 38.2, 0, at: 0.8).actions == [.breakFree])
 
-        var fromTheTouch = PluckPinches(tuning: PluckTuning(measuresPullFromLift: false))
+        var fromTheTouch = PluckPinches(tuning: notSticky(measuresPullFromLift: false))
         _ = fromTheTouch.pressBegan(at: at(0))
         _ = moved(&fromTheTouch, 0, 30, 0, at: 0.45)
         _ = fromTheTouch.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = fromTheTouch.armPull(at: at(0.7))
-        #expect(moved(&fromTheTouch, 0, 31, 0, at: 0.72).actions == [.beginPull])
+        #expect(moved(&fromTheTouch, 0, 31, 0, at: 0.72).actions == [.breakFree])
     }
 
     /// The drag reports depth in steps of about 4.2 pt: one step from where
     /// the pinch lifted doesn't pull, two do.
     @Test func oneDepthStepDoesntPullAndTwoDo() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = moved(&pinches, 7.5, -2.1, 13.3, at: 0.4)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
         #expect(moved(&pinches, 7.5, -2.1, 17.5, at: 0.75).actions == [])
-        #expect(moved(&pinches, 7.5, -2.1, 21.7, at: 0.8).actions == [.beginPull])
+        #expect(moved(&pinches, 7.5, -2.1, 21.7, at: 0.8).actions == [.breakFree])
     }
 
     /// With the drag silent as the item lifts, the pinch stood within its
     /// 15 pt start of the touch, so its first word after the arming, the
     /// first sign of a move, pulls, measured from the touch.
     @Test func theDragsFirstWordAfterASilentLiftPulls() {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(pinches.armPull(at: at(0.7)).actions == [.pullArmed])
         #expect(pinches.press?.liftPoint == nil)
         let first = moved(&pinches, 0, 15, 0, at: 0.9)
-        #expect(first.actions == [.beginPull])
-        #expect(first.why == .pulled(PluckPullJudgement(depth: 0, drift: 15, threshold: 8.16, verdict: .pulls, origin: .touch)))
+        #expect(first.actions == [.breakFree])
+        #expect(first.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 15, threshold: 8.16, verdict: .pulls, origin: .touch)))
     }
 
     /// The rest stays: the lift outlives a press its scroll's stopping
     /// cancels, and still pulls; its release tap is no tap.
     @Test func theLiftOutlivesItsPressAndItsReleaseIsNoTap() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(pinches.pressEnded(at: at(0.51)) == PluckPinches.Told(why: .liftOutlivesItsPress))
         _ = pinches.armPull(at: at(0.7))
-        #expect(moved(&pinches, -12, 9, 2, at: 0.8).actions == [.beginPull])
+        #expect(moved(&pinches, -12, 9, 2, at: 0.8).actions == [.breakFree])
         let told = pinches.dragEnded(at: at(1.1))
-        #expect(told.actions == [.endPull, .settle])
+        #expect(told.actions == [.releaseSpawned, .settle])
         #expect(try #require(told.ended).outcome == .pull)
         #expect(pinches.tapped(at: at(1.12)).isRelease)
     }
@@ -206,12 +216,12 @@ import Testing
     /// moved across more than toward the viewer. Pulled only after 3.64 s
     /// as first shipped, every word "too shallow"; now its first word pulls.
     @Test func itemSixPullsAtItsFirstWord() {
-        var defaults = PluckPinches()
+        var defaults = PluckPinches(tuning: .notSticky)
         _ = defaults.pressBegan(at: at(0))
         _ = defaults.holdFired(asTheContainerScrolled: false, at: at(0.56))
         _ = defaults.armPull(at: at(0.76))
         let first = moved(&defaults, -14.3, -2.1, 4.2, at: 0.8)
-        #expect(first.actions == [.beginPull])
+        #expect(first.actions == [.breakFree])
 
         var asFirstShipped = PluckPinches(tuning: .towardTheViewerFromTheTouch)
         _ = asFirstShipped.pressBegan(at: at(0))
@@ -237,7 +247,7 @@ import Testing
         _ = asFirstShipped.pressBegan(at: at(0))
         #expect(moved(&asFirstShipped, 12.5, 8.2, -2.5, at: 0.25).actions == [.stayDown(.movedFirst)])
 
-        var defaults = PluckPinches()
+        var defaults = PluckPinches(tuning: .notSticky)
         _ = defaults.pressBegan(at: at(0))
         let first = moved(&defaults, 12.5, 8.2, -2.5, at: 0.25)
         #expect(first.actions == [])
@@ -252,15 +262,15 @@ import Testing
     /// and its word at 0.81 s pulls; measured from the arming, the same word
     /// is 5.5 pt along, short of the pull.
     @Test func itemThreePullsAt081Seconds() throws {
-        var pinches = PluckPinches()
+        var pinches = PluckPinches(tuning: .notSticky)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.59))
         #expect(pinches.press?.liftPoint == nil)
         #expect(moved(&pinches, 7.5, -2.1, 13.3, at: 0.73).why == .notArmedYet)
         _ = pinches.armPull(at: at(0.79))
         let pull = moved(&pinches, 8.6, -0.9, 18.6, at: 0.81)
-        #expect(pull.actions == [.beginPull])
-        guard case .pulled(let pulled) = pull.why else {
+        #expect(pull.actions == [.breakFree])
+        guard case .brokeFree(let pulled) = pull.why else {
             Issue.record("expected a pull, got \(pull.why)")
             return
         }
@@ -270,7 +280,7 @@ import Testing
         #expect(account.outcome == .pull)
         #expect(account.pulledAfter == .seconds(0.81))
 
-        var fromTheArming = PluckPinches(tuning: PluckTuning(measuresPullFromLift: false, measuresPullFromArming: true))
+        var fromTheArming = PluckPinches(tuning: notSticky(measuresPullFromLift: false, measuresPullFromArming: true))
         _ = fromTheArming.pressBegan(at: at(0))
         _ = fromTheArming.holdFired(asTheContainerScrolled: false, at: at(0.59))
         _ = moved(&fromTheArming, 7.5, -2.1, 13.3, at: 0.73)
@@ -299,7 +309,7 @@ import Testing
             _ = pinches.armPull(at: at(0.7))
             return pinches.dragMoved(SIMD3(0, 28.2, 0), pointsPerMeter: pointsPerMeter, at: at(0.72))
         }
-        #expect(pinch(PluckTuning()).actions == [.beginPull])
-        #expect(pinch(PluckTuning(measuresPullFromLift: false, measuresPullFromArming: true)).actions == [])
+        #expect(pinch(.notSticky).actions == [.breakFree])
+        #expect(pinch(notSticky(measuresPullFromLift: false, measuresPullFromArming: true)).actions == [])
     }
 }

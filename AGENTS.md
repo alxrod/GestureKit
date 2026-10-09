@@ -152,9 +152,9 @@ stand in for a hand (`LabLoad`):
 - `-labLoad <kinds>`, comma-separated, begins 3 s in: `trace`, 20 trace
   events a second after 30 interactions of 15; `tuning`, the station's
   first number slid across its range, set 60 times a second; `pull`, the
-  pluck's card moved 90 times a second; `scroll`, the pluck's grid scrolled
-  at 1,500 pt a second; `drag`, the press's playhead moved 90 times a
-  second; `coast`, the press's playhead flicked every 2 s; and `switch`,
+  pluck's card spawned and carried, 90 steps a second; `scroll`, the
+  pluck's grid scrolled at 1,500 pt a second; `drag`, the press's playhead
+  moved 90 times a second; `coast`, the press's playhead flicked every 2 s; and `switch`,
   the next station chosen every 4 s. What a load changes stays, as a
   hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
   `switch` the station it chose last remembered.
