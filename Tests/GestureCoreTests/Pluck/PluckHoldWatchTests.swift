@@ -126,7 +126,7 @@ import Testing
         #expect(alarm.kind == .letGoWithNothingHeard)
         #expect(alarm.kind.letsGo)
         #expect(alarm.unclaimedFor == .zero)
-        #expect(alarm.line.hasPrefix("Scroll held by item 7 for 1.35 s with nothing heard from its pinch for 1.00 s, let go by the safety net"))
+        #expect(alarm.line.hasPrefix("Net let go: scroll held by item 7 for 1.35 s, pinch unheard for 1.00 s; pinch: item 7"))
     }
 
     /// The net's time is the caller's to set, from its tuning.
@@ -164,7 +164,7 @@ import Testing
         #expect(!alarm.kind.letsGo)
         #expect(alarm.heldFor == at(0.8) - at(0.25))
         #expect(alarm.unclaimedFor == at(0.8) - at(0.26))
-        #expect(alarm.line == "Scroll held by item 7 for 0.55 s with no pinch under way for 0.54 s; its pinch: item 7: press up, drag silent or ended, its item kept up past its press")
+        #expect(alarm.line == "Scroll held by item 7 for 0.55 s, no pinch for 0.54 s; pinch: item 7: press up, drag silent or ended, its item kept up past its press")
         watch.raised(alarm, at: at(0.8))
         #expect(watch.alarms == 1)
         #expect(watch.lastAlarm == alarm.line)
@@ -214,7 +214,7 @@ import Testing
         }
         #expect(alarm.kind == .letGoWithNoPinchOnIt)
         #expect(alarm.pinch == nil)
-        #expect(alarm.line == "Scroll held by item 7 for 0.15 s with no pinch on it, let go by the safety net")
+        #expect(alarm.line == "Net let go: scroll held by item 7 for 0.15 s, no pinch on it")
     }
 
     /// A pinch on another item, its press down, is a pinch under way.
@@ -284,7 +284,7 @@ import Testing
             return
         }
         #expect(alarm.kind == .scrollViewNeverTookIt)
-        #expect(alarm.line.hasPrefix("The scroll view never took the scroll of the pinch on item 99: no phase of scrolling, nor its pan begun, 0.30 s after the rules told it as one; scroll on; given on"))
+        #expect(alarm.line.hasPrefix("Scroll view never took item 99's scroll: no phase or pan 0.30 s after it was ruled one; scroll on; given on"))
         watch.raised(alarm, at: at(1.3))
         #expect(watch.nextCheck == nil)
 
