@@ -42,7 +42,13 @@ private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", c
 ///   cancel went unheard; a spawn whose drag's end and cancel went unheard;
 ///   a spawn let go; and a scroll. After each, it logs the container's status
 ///   at once, 0.6 s, and 1.2 s later ("Lab load stuck: …"), then says the
-///   words that end any pinch left, and logs it again, once through.
+///   words that end any pinch left, and logs it again. Last, Alex's clip of
+///   October 10, on item 10 (`stuckClip`): a pluck through its break-free,
+///   carry, and release; the card carried by its own grab handle; then a
+///   pinch told as a scroll on item 10, which the stand-in has the scroll
+///   view take, one on item 11, which it doesn't, and one on empty grid
+///   space, logging the status, with what the scroll view itself has, after
+///   each step ("Lab load stuck clip: …"). Once through.
 enum LabLoad: String, CaseIterable {
     case trace
     case tuning
@@ -277,16 +283,109 @@ enum LabLoad: String, CaseIterable {
             logStuck(station, case: number + 1, "its words all said")
             try? await Task.sleep(for: .seconds(0.7))
         }
+        await stuckClip(on: station)
         labLoadLogger.info("Lab load stuck finished")
+    }
+
+    /// Alex's clip of October 10, said through the real adapters by the
+    /// stand-in: item 10 plucked, its card carried and let go; the card
+    /// carried by its own grab handle; then pinches told as scrolls.
+    @MainActor private static func stuckClip(on station: PluckStation) async {
+        let item = PinchStandIn.Adapter.pluckItem("item 10")
+        func say(_ step: PinchStandIn.PluckStep, to adapter: PinchStandIn.Adapter = item) {
+            if PinchStandIn.shared.step(adapter, step) == 0, case .pluckItem = adapter {
+                labLoadLogger.error("Lab load stuck clip: no item took the stand-in's word")
+            }
+        }
+        func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+        func log(_ when: String) { logStuck(station, case: 8, "clip, " + when) }
+
+        // The pluck: touched, held a quarter second, pulled 2.5 cm across,
+        // broken free, and its spawn carried.
+        say(.pressDown)
+        await wait(0.1)
+        say(.dragMoved(points: SIMD3(16, 0, 0)))
+        await wait(0.4)
+        say(.dragMoved(points: SIMD3(60, 0, 0)))
+        await wait(0.05)
+        log("after the break-free")
+        for step in 1...6 {
+            await wait(0.1)
+            say(.dragMoved(points: SIMD3(60 + Double(step) * 40, Double(step) * 5, Double(step) * 8)))
+        }
+        log("mid-carry")
+        // Let go: the drag's end and its reset, the press's end, the tap.
+        say(.dragEnded)
+        say(.dragStopped)
+        say(.pressUp)
+        say(.tapped)
+        await wait(0.2)
+        log("after the release")
+
+        // The card carried by its own grab handle, 1.27 s, a meter being
+        // 1,360 of its points.
+        await wait(0.5)
+        if let handle = station.loadHandle(ofCardFromItem: 10) {
+            for frame in 1...23 {
+                await wait(0.055)
+                let meters = SIMD3<Float>(Float(frame) * 0.01, Float(frame) * 0.004, 0)
+                let points = SIMD3(Double(meters.x), -Double(meters.y), 0) * 1360
+                PinchStandIn.shared.step(.grabHandleCarry, .moved(points: points, meters: meters, handle: handle))
+            }
+            PinchStandIn.shared.step(.grabHandleCarry, .released)
+        } else {
+            labLoadLogger.error("Lab load stuck clip: the card's grab handle isn't there")
+        }
+        await wait(0.3)
+        log("after the card's carry")
+
+        // A pinch on item 10 told as a scroll, its drag first as on the
+        // headset, which the stand-in has the scroll view take.
+        await wait(1)
+        say(.dragMoved(points: SIMD3(0, 15, 0)))
+        say(.pressDown)
+        say(.scrollPhase(.interacting), to: .pluckContainer)
+        await wait(0.1)
+        say(.pressUp)
+        say(.dragEnded)
+        say(.dragStopped)
+        await wait(0.3)
+        say(.scrollPhase(.idle), to: .pluckContainer)
+        log("after a scroll on item 10, the scroll view taking it")
+
+        // One on item 11 the scroll view doesn't take: the alarm's case.
+        let other = PinchStandIn.Adapter.pluckItem("item 11")
+        await wait(1)
+        say(.dragMoved(points: SIMD3(0, 15, 0)), to: other)
+        say(.pressDown, to: other)
+        await wait(0.1)
+        say(.pressUp, to: other)
+        say(.dragEnded, to: other)
+        say(.dragStopped, to: other)
+        await wait(0.5)
+        log("after a scroll on item 11, the scroll view not taking it")
+
+        // One on empty grid space: only the scroll view hears it.
+        await wait(1)
+        say(.scrollPhase(.tracking), to: .pluckContainer)
+        say(.scrollPhase(.interacting), to: .pluckContainer)
+        await wait(0.3)
+        say(.scrollPhase(.idle), to: .pluckContainer)
+        await wait(0.2)
+        log("after a scroll on empty space")
     }
 
     /// Logs the pluck station's container's status, `when` in case `number`.
     @MainActor private static func logStuck(_ station: PluckStation, case number: Int, _ when: String) {
         let status = station.container.status
-        let held = status.heldBy.map { "the scroll held by \($0)" } ?? "the scroll on"
+        let held = status.heldBy.map { "the scroll held off for \($0)" } ?? "the scroll on"
+        let given = status.scrollGiven.map { $0 ? "given held off" : "given on" } ?? "given nothing yet"
+        let container = "the container \(status.containerHolds ? "holding" : "not holding"), \(status.containerLifted ? "an item lifted" : "nothing lifted")"
+        let scrollView = "the scroll view " + (status.scrollView ?? "unread")
         let pinch = status.pinch.map { (status.pinchIsUnderWay ? "a pinch under way on " : "no pinch under way, the pluck keeping one on ") + $0 } ?? "no pinch"
+        let disagreement = status.disagreement.map { "; views disagree: \($0)" } ?? ""
         let alarm = status.lastAlarm.map { ", the last: \($0)" } ?? ""
-        labLoadLogger.info("Lab load stuck: case \(number, privacy: .public), \(when, privacy: .public): \(held, privacy: .public); \(pinch, privacy: .public); \(status.alarms, privacy: .public) alarms\(alarm, privacy: .public)")
+        labLoadLogger.info("Lab load stuck: case \(number, privacy: .public), \(when, privacy: .public): \(held, privacy: .public), \(given, privacy: .public); \(container, privacy: .public); \(scrollView, privacy: .public); \(pinch, privacy: .public)\(disagreement, privacy: .public); \(status.alarms, privacy: .public) alarms\(alarm, privacy: .public)")
     }
 
     @MainActor private static func switchLoad(on lab: LabModel) async {
