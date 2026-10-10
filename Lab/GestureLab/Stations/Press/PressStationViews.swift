@@ -9,7 +9,7 @@ struct PressStationWindow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Tap, drag, flick, or hold still on the surface. Hold the tab at its end.")
+            Text("Tap, drag, flick, or hold the surface. Hold its tab.")
             Toggle("Drag scrolls", isOn: $station.dragAlongScrolls)
             Toggle("No pickups", isOn: $station.refusesPickUps)
             Toggle("No carries", isOn: $station.refusesCarries)
