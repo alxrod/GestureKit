@@ -40,6 +40,8 @@ extension View {
     ///     line; nil, or one not recording, traces nothing, and the console
     ///     gets a line only for a pinch that holds.
     ///   - traceTitle: what each pinch's trace is called.
+    ///   - automationID: what GestureKit's automation drives this view by,
+    ///     in a debug build; its trace's title unless given.
     ///   - onHeldStill: asked once the pinch has been held still long
     ///     enough: does what the hold does, and says whether it did.
     public func holdWatch(
@@ -49,6 +51,7 @@ extension View {
         tuning: HoldWatch.Tuning = .defaults,
         recorder: TraceRecorder? = nil,
         traceTitle: String = "Pinch on a control",
+        automationID: String? = nil,
         onHeldStill: @escaping @MainActor () -> Bool
     ) -> some View {
         modifier(HoldWatchModifier(
@@ -58,6 +61,7 @@ extension View {
             tuning: tuning,
             recorder: recorder,
             traceTitle: traceTitle,
+            automationID: automationID ?? traceTitle,
             onHeldStill: onHeldStill
         ))
     }
@@ -72,6 +76,8 @@ private struct HoldWatchModifier: ViewModifier {
     let tuning: HoldWatch.Tuning
     let recorder: TraceRecorder?
     let traceTitle: String
+    /// What GestureKit's automation drives it by, in a debug build.
+    let automationID: String
     let onHeldStill: @MainActor () -> Bool
 
     /// The pinch under way, kept in a reference made once for the view:
@@ -80,6 +86,7 @@ private struct HoldWatchModifier: ViewModifier {
     /// hand moved; through a reference, nothing SwiftUI watches changes but
     /// `isHeld`, as a pinch holds and as its grace ends.
     @State private var pinch = HoldWatchPinch()
+
     /// True while a pinch is under way, from its touch; SwiftUI resets it as
     /// the pinch ends and as it's cancelled.
     @GestureState private var isPressing = false
@@ -96,15 +103,30 @@ private struct HoldWatchModifier: ViewModifier {
                 watched.dragBegan()
                 pinch.watch = watched
                 pinch.trace?.event("drag began", "after \(holdWatchSeconds(elapsed)): the pinch is the control's")
+                report("drag began")
             }
             .onDisappear { pinchEnded() }
             #if DEBUG
-            .modifier(PinchStandInListener(adapter: .holdWatch) { step in
-                switch step {
-                case .moved(let points, _, _): pinchMoved(Vector3D(x: points.x, y: points.y, z: points.z))
-                case .released: pinchEnded()
-                }
-            })
+            .modifier(PinchStandInEar(
+                adapter: .holdWatch,
+                name: automationID,
+                step: { step in
+                    switch step {
+                    case .moved(let points, _, _, _): pinchMoved(Vector3D(x: points.x, y: points.y, z: points.z))
+                    case .released: pinchEnded()
+                    }
+                },
+                isBusy: { pinch.watch != nil || pinch.timer != nil },
+                facts: {
+                    [
+                        "duration": .number(tuning.duration),
+                        "stillDistance": .number(tuning.stillDistance),
+                        "isEnabled": .bool(isEnabled),
+                        "isHeld": .bool(isHeld),
+                    ]
+                },
+                recorder: recorder
+            ))
             #endif
     }
 
@@ -131,6 +153,7 @@ private struct HoldWatchModifier: ViewModifier {
         let gaveUp = watched.move(SIMD3(moved.x, moved.y, moved.z))
         pinch.watch = watched
         guard gaveUp else { return }
+        report("moved off", String(format: "%.1f pt", watched.farthest))
         pinch.trace?.event("moved off", String(format: "%.1f pt, past %.1f, after %@: the pinch is the control's", watched.farthest, tuning.stillDistance, holdWatchSeconds(elapsed)))
     }
 
@@ -143,6 +166,7 @@ private struct HoldWatchModifier: ViewModifier {
         pinch.touchedAt = .now
         pinch.trace = recorder?.begin("HoldWatch", title: traceTitle)
         pinch.trace?.event("touch", "holds at \(holdWatchSeconds(tuning.duration)) within \(String(format: "%.1f pt", tuning.stillDistance))")
+        report("touch")
         if dragHasBegun {
             pinch.watch?.dragBegan()
             pinch.trace?.event("drag began", "as it touched: the pinch is the control's")
@@ -154,6 +178,7 @@ private struct HoldWatchModifier: ViewModifier {
             guard !Task.isCancelled, pinch.serial == counting, var watched = pinch.watch, watched.stage == .waiting else { return }
             let held = watched.timeIsUp(asking: onHeldStill)
             pinch.watch = watched
+            report(held ? "held" : "asked nothing")
             if held {
                 isHeld = true
                 if let trace = pinch.trace {
@@ -182,6 +207,7 @@ private struct HoldWatchModifier: ViewModifier {
         case .waiting: "let go before its hold"
         }
         pinch.trace?.event("release", "after \(holdWatchSeconds(elapsed)), \(String(format: "%.1f pt", watched.farthest)) at the farthest")
+        report("release", outcome)
         pinch.trace?.finish(outcome)
         pinch.trace = nil
         pinch.touchedAt = nil
@@ -193,6 +219,16 @@ private struct HoldWatchModifier: ViewModifier {
                 isHeld = false
             }
         }
+    }
+}
+
+extension HoldWatchModifier {
+    /// Tells GestureKit's automation what the watch did, in a debug build
+    /// while a command listens; nothing otherwise.
+    fileprivate func report(_ name: String, _ detail: String? = nil) {
+        #if DEBUG
+        GestureAutomation.shared.heard("hold watch", on: automationID, name, detail.map { .string($0) } ?? .null)
+        #endif
     }
 }
 

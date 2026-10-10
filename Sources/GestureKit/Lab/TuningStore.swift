@@ -35,6 +35,10 @@ public final class TuningStore<Tuning: Tunable> {
         self.namespace = namespace
         self.defaults = defaults
         tuning = Self.load(from: defaults, key: "\(namespace).tuning")
+        #if DEBUG
+        // GestureKit's automation tunes it by its namespace (`tune`).
+        GestureAutomation.shared.noteTuning(self)
+        #endif
     }
 
     /// Sets `parameter` to `value`, fitted to its range and step. A value the

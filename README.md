@@ -879,7 +879,114 @@ gesture or a station.
 
 ## Automation
 
-To come: driving the gestures in the simulator through debug commands.
+Every app on GestureKit can have its gestures driven in a visionOS simulator
+with no hand: by an agent testing a change, or by you. In a debug build,
+each adapter registers what it drives as its view appears, under the ids you
+already give it, and goes as its view does. A release build compiles none of
+it.
+
+A command names a gesture and what it's on. The automation then says the
+words that gesture's adapter would hear from a hand, at a hand's pace, so
+the adapter and GestureCore's rules run as they would on the headset. Your
+app hears the gesture as it would from a hand, and the answer, in JSON,
+says what happened.
+
+1. **Turn it on.** There's no code to write. Launch with
+   `GESTUREKIT_AUTOMATION=1` in the environment, or `-GestureKitAutomation
+   YES` as an argument, and GestureKit serves commands on 127.0.0.1:48765,
+   which the simulator shares with your Mac. `gesturekit-drive launch` does
+   this for you.
+2. **Launch your app in a simulator.** Build a debug build for the
+   simulator and install it, then run the package's driver from your
+   package's root. From an Xcode project, run it from GestureKit's
+   checkout, with `swift run --package-path <checkout> gesturekit-drive`.
+
+   ```sh
+   swift run gesturekit-drive launch com.example.app
+   ```
+
+3. **See what's drivable, and smoke it.** `targets` lists each target by
+   kind and id. `smoke` drives every one once with its default command and
+   reports each outcome.
+
+   ```sh
+   swift run gesturekit-drive targets
+   swift run gesturekit-drive smoke
+   ```
+
+4. **Drive one gesture, and read the result.**
+
+   ```sh
+   swift run gesturekit-drive pluck "item 7" pull=0,0,0.06
+   swift run gesturekit-drive carry panel-b by=0.1,0,0.2
+   swift run gesturekit-drive hold surface seconds=1.2
+   swift run gesturekit-drive trace
+   swift run gesturekit-drive screenshot
+   ```
+
+   Each prints the app's answer:
+   - `ok`;
+   - its `outcome`, such as `spawned`, `carried`, or `hold`;
+   - a `result` to assert on, such as where a carried thing stood;
+   - the `events` the adapters reported;
+   - the `trace` of each interaction;
+   - your app's `state`.
+
+   It exits 1 when a command fails, and the answer's `error` says why.
+   `--brief` prints only the outcome and result.
+
+### How things are named
+
+| What | Driven by |
+| --- | --- |
+| A pluckable item | its title or its id |
+| A pluckable grid | its `automationID`, "grid" unless you give one |
+| A surface or a hold watch | its `automationID`, else its trace title |
+| A grab handle | what it carries |
+| A panel stood below the gaze | its entity's name |
+| A tuning store | its namespace |
+
+The commands are `pluck`, `tap`, `scroll`, `carry`, `place`, `drag`,
+`flick`, `pickup`, `hold`, and `tune`. Vectors are meters: x right, y up, z
+toward you. `gesturekit-drive help` lists the commands, and
+`docs/automation-design.md` says what each runs for real and what it stands
+in for.
+
+Naming a target, adding your own state to every answer, and adding commands
+of your own are optional:
+
+```swift
+import GestureKit
+import SwiftUI
+
+/// A surface the automation drives as "strip" rather than by its trace's
+/// title, and, in a debug build, the app's own state in every answer.
+struct AutomationNamedStrip: View {
+    let clipCount: Int
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .frame(width: 600, height: 120)
+            .surfacePress(traceTitle: "Pinch on the strip", automationID: "strip") { _ in }
+            #if DEBUG
+            .onAppear {
+                GestureAutomation.shared.register(state: "editor") { ["clips": .number(Double(clipCount))] }
+            }
+            #endif
+    }
+}
+```
+
+An app that shows no GestureKit adapter at launch can call
+`GestureAutomation.start()`.
+
+GestureLab drives itself the same way:
+- `scripts/gesture-drive.sh up` keeps a simulator of its own, builds the
+  lab and the driver, and launches the lab with automation on.
+- `scripts/gesture-drive.sh <command>` runs any of the driver's commands
+  against it.
+- `scripts/gesture-selftest.sh` drives every gesture in a fresh simulator,
+  checks each outcome, and exits non-zero at the first failure.
 
 ## License
 

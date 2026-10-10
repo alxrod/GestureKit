@@ -8,7 +8,7 @@
 #
 # Builds the Debug configuration unless `release` is given, which compiles
 # out what's DEBUG-only, so code that left `#if DEBUG` is checked without
-# it. Builds into a throwaway DerivedData directory with code signing off,
+# it, and checks the built app carries none of GestureKit's automation. Builds into a throwaway DerivedData directory with code signing off,
 # so it needs no development team, prints the compiler diagnostics from
 # this repository's sources and the result line, then unregisters any
 # built .app from LaunchServices and deletes the directory, whatever the
@@ -50,4 +50,21 @@ xcodebuild \
 # deduplicated.
 grep -E '^/.*: (error|warning): ' "$log" | grep -F "$root/" | sort -u || true
 grep -E '\*\* BUILD (SUCCEEDED|FAILED) \*\*' "$log" || tail -n 20 "$log"
+
+# A release build carries none of the debug-only automation or the hand's
+# stand-in: no symbol of theirs, and none of the launch's switches.
+if [ "$status" -eq 0 ] && [ "$configuration" = Release ]; then
+  app="$(find "$derived/Build/Products" -type d -name 'GestureLab.app' -prune -print -quit)"
+  found=""
+  while IFS= read -r binary; do
+    file "$binary" | grep -q 'Mach-O' || continue
+    found+="$( { nm "$binary" 2>/dev/null; strings -a "$binary" 2>/dev/null; } | grep -E 'GestureAutomation|PinchStandIn|GESTUREKIT_AUTOMATION|GestureKitAutomation' | head -n 3 || true)"
+  done < <(find "$app" -type f -perm -u+x)
+  if [ -n "$found" ]; then
+    echo "The release build carries debug-only automation:" >&2
+    echo "$found" >&2
+    exit 1
+  fi
+  echo "The release build carries no automation."
+fi
 exit "$status"

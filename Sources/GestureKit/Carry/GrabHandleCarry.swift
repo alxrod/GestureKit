@@ -155,15 +155,30 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 pinchEnded(how: "ended as its view went")
             }
             #if DEBUG
-            .modifier(PinchStandInListener(adapter: .grabHandleCarry) { step in
-                switch step {
-                case .moved(let points, let meters, let handle):
-                    guard let handle else { return }
-                    pinchChanged(on: handle, distance: (points * points).sum().squareRoot(), translation: meters)
-                case .released:
-                    pinchEnded(how: "released")
-                }
-            })
+            .modifier(PinchStandInEar(
+                adapter: .grabHandleCarry,
+                step: { step in
+                    switch step {
+                    case .moved(let points, let meters, let handle, _):
+                        // Only a handle this carry's drag would target: one
+                        // marked with its marker.
+                        guard let handle, handle.components.has(Marker.self) else { return }
+                        pinchChanged(on: handle, distance: (points * points).sum().squareRoot(), translation: meters)
+                    case .released:
+                        pinchEnded(how: "released")
+                    }
+                },
+                isBusy: { pinches.underWay != nil },
+                facts: {
+                    [
+                        "marker": .string(String(describing: Marker.self)),
+                        "startDistance": .number(tuning.startDistance),
+                        "nearestToHead": .number(Double(tuning.nearestToHead)),
+                        "pinched": .bool(pinches.underWay != nil),
+                    ]
+                },
+                recorder: recorder
+            ))
             #endif
     }
 
@@ -198,6 +213,9 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     /// its trace.
     private func begin(on handle: Entity) -> UnderWay {
         let trace = recorder?.begin(gestureName, title: handle.name.isEmpty ? "Pinch on a grab handle" : "Pinch on \(handle.name)")
+        #if DEBUG
+        GestureAutomation.shared.heard("carry", on: handle.name, "touch")
+        #endif
         trace?.event("touch", "carries after \(Self.points(tuning.startDistance)) pt")
         return UnderWay(pinch: CarryPinch(tuning: tuning), handle: handle, trace: trace)
     }
@@ -214,9 +232,15 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 pinch.beganAfter = distance
                 pinches.underWay = pinch
                 pinch.trace?.event("begin", "after \(Self.points(distance)) pt, carries \(grabHandleCarryName(of: id)) from \(carryPlaceText(grabbed.middle))")
+                #if DEBUG
+                GestureAutomation.shared.heard("carry", on: pinch.handle.name, "begin", ["carries": .string(grabHandleCarryName(of: id)), "middle": .vector(grabbed.middle), "after": .number(distance, decimals: 1)])
+                #endif
                 let moment = GrabHandleCarryMoment(id: id, middle: grabbed.middle, handMoved: .zero, handle: pinch.handle, trace: pinch.trace)
                 guard onBegin(moment) else {
                     pinch.trace?.event("refused", "the carry couldn't begin")
+                    #if DEBUG
+                    GestureAutomation.shared.heard("carry", on: pinch.handle.name, "refused")
+                    #endif
                     pinch.pinch.refuse()
                     pinch.refused = true
                     pinches.underWay = pinch
@@ -236,11 +260,17 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                     )
                 }
                 pinches.underWay = pinch
+                #if DEBUG
+                GestureAutomation.shared.heard("carry", on: pinch.handle.name, "carry", ["middle": .vector(middle), "handMoved": .vector(handMoved)])
+                #endif
                 onCarry(GrabHandleCarryMoment(id: id, middle: middle, handMoved: handMoved, handle: pinch.handle, trace: pinch.trace))
             case .ignore:
                 pinch.beganAfter = distance
                 pinches.underWay = pinch
                 pinch.trace?.event("ignored", "after \(Self.points(distance)) pt, under nothing to carry")
+                #if DEBUG
+                GestureAutomation.shared.heard("carry", on: pinch.handle.name, "ignored")
+                #endif
             case .endCarry:
                 // Ended by `pinchEnded(how:)`, which tells the app.
                 break
@@ -273,9 +303,15 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 the middle \(Self.meters(went)) m from where it was grabbed, at \(carryPlaceText(middle)), \
                 in \(pinch.steps) steps
                 """)
+            #if DEBUG
+            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "end", ["middle": .vector(middle), "went": .number(Double(went), decimals: 4), "how": .string(how)])
+            #endif
             onEnd(GrabHandleCarryMoment(id: grabbed.id, middle: middle, handMoved: pinch.handMoved, handle: pinch.handle, trace: pinch.trace))
             pinch.trace?.finish("carried \(Self.meters(went)) m")
         case .waiting:
+            #if DEBUG
+            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "release", ["after": .number(pinch.farthest, decimals: 1)])
+            #endif
             pinch.trace?.event("release", "\(how), after only \(Self.points(pinch.farthest)) pt")
             pinch.trace?.finish("nothing")
         case .ignored:

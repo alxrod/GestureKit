@@ -17,13 +17,25 @@ the order the areas arrive in.
   lab's shared views. It re-exports GestureCore.
 - **GestureLab**: the app in `Lab/`, a window listing a station per
   gesture and a mixed immersive space where the chosen one stands.
+- **Automation**, debug builds only: every app on GestureKit can have its
+  gestures driven in a simulator with no hand, each adapter registering
+  what it drives as it appears, and `gesturekit-drive`, the package's Mac
+  tool, driving them (`docs/automation-design.md`; "Driving the gestures"
+  below).
 
 ## Layout
 
-- `Package.swift`: the two libraries and GestureCore's tests, in the Swift
-  6 language mode.
+- `Package.swift`: the two libraries, `gesturekit-drive`, and GestureCore's
+  tests, in the Swift 6 language mode.
 - `Sources/GestureCore/<Area>/`: an area's rules, as values, and its
   tuning.
+- `Sources/GestureCore/Automation/`, under `#if DEBUG`: the automation's
+  plain values, public in debug builds: a JSON value (`AutomationJSON`), a
+  command's arguments read leniently (`AutomationArguments`,
+  `AutomationError`), the server's HTTP (`AutomationHTTP`), a hand's steps
+  in meters and an adapter's points (`AutomationPath`), and what the
+  adapters reported, folded, with each gesture's outcome told from it
+  (`AutomationEventLog`, `AutomationOutcome`).
 - `Sources/GestureCore/Lab/`: what a tuning and a trace are, for every
   area and the lab.
   - `Tunable`: a tuning struct's defaults and its parameters; the values
@@ -48,6 +60,19 @@ the order the areas arrive in.
     quiet spell at once, then at most once a tenth of a second.
 - `Sources/GestureKit/<Area>/`: an area's adapters, wrapped whole in
   `#if os(visionOS)`.
+- `Sources/GestureKit/Automation/`, visionOS and `#if DEBUG`, public:
+  `GestureAutomation`, the hub: what's registered, the switch it reads
+  (`GestureAutomationSwitch`: `-GestureKitAutomation`,
+  `GESTUREKIT_AUTOMATION`, their port and script), the commands' drives
+  (`GestureAutomation+Drives`), the server on 127.0.0.1
+  (`GestureAutomationServer`), a script run at launch
+  (`GestureAutomation+Script`), and what each adapter reports
+  (`GestureAutomationReports`). Each adapter registers itself through its
+  ear for the stand-in (`PinchStandInEar`), `GrabHandle.make` its handle,
+  `GazePanel.stand` its panel, and `TuningStore` itself.
+- `Sources/GestureKitDrive/`: `gesturekit-drive`, a Mac tool an app's own
+  repository runs with `swift run`: `launch`, `targets`, `smoke`, each
+  gesture command, `trace`, `wait`, `state`, `send`, and `screenshot`.
 - `Sources/GestureKit/Lab/`: the lab's shared views, also visionOS only.
   - `TraceRecorder` and `InteractionTrace`: an observable trace an adapter
     is handed, optionally, which logs each finished interaction's summary,
@@ -63,8 +88,14 @@ the order the areas arrive in.
     stand-in, whose steps `.surfacePress`, `.holdWatch`, and
     `.grabHandleCarry` take as their own drag's words while it listens, and
     a pluckable item, by its title, and its container take as their
-    gestures' and scroll view's words (`PluckStep`), for the lab's loads
-    (see "Measuring the lab"); and `PinchTracker.standIn`, the hands' stand-in,
+    gestures' and scroll view's words (`PluckStep`), the container moving
+    its content to an offset through SwiftUI's scroll position
+    (`PluckContainerStandIn`), for the lab's loads (see "Measuring the lab")
+    and GestureKit's automation; a step goes to every adapter of its kind,
+    or to those of one id. Each adapter's ear (`PinchStandInEar`) listens
+    while its view is on screen, the stand-in listening or the automation
+    on, with the adapter's id, whether a pinch is under way on it, what it
+    goes by, and its trace. And `PinchTracker.standIn`, the hands' stand-in,
     fed as hand tracking would feed it.
   - `pluckScrollViewProbe`, DEBUG only, in `Sources/GestureKit/Pluck/`:
     placed inside a pluckable scroll view's content, it reads what the UIKit
@@ -112,8 +143,15 @@ the order the areas arrive in.
       snippet here, build the lab, then put the file's text in the README.
       A block that can't compile here, as the package manifest, has
       `<!-- Not compiled: … -->` on the line before its fence.
-- `scripts/build-check.sh`: the lab's compile check.
-- `docs/design.md`: the design.
+- `scripts/build-check.sh`: the lab's compile check; in Release, it checks
+  the built app carries none of the automation.
+- `scripts/gesture-drive.sh`: GestureLab's simulator, "GestureLab-Auto",
+  its build and the driver's in `build/gesture-drive/`, and every
+  `gesturekit-drive` command against it.
+- `scripts/gesture-selftest.sh`: every gesture driven in a fresh simulator,
+  each outcome checked, non-zero at the first failure.
+- `docs/design.md`: the design. `docs/automation-design.md`: driving the
+  gestures without a hand.
 - `Local.xcconfig.example`: copy to `Local.xcconfig`, gitignored, and set
   your team to run the lab on a device.
 
@@ -154,6 +192,12 @@ the order the areas arrive in.
   held once in `@State`, never in `@State` itself, whose every change runs
   the modifier's body again, its gestures and all; what it draws from a
   pinch, as a press's lift, is an observable read by a modifier of its own.
+- A new adapter registers with the automation through `PinchStandInEar`,
+  under the id its app gives it, telling whether a pinch is under way on it
+  and what it goes by, and reports what it does
+  (`GestureAutomation.heard`) only while a command listens; a command for
+  it goes in `GestureAutomation+Drives`, with its checks in
+  `scripts/gesture-selftest.sh`. All of it under `#if DEBUG`.
 - Register every custom RealityKit `Component` and `System` before
   anything uses it: a station does so in its `registerComponents()`, which
   the app calls in its `init()`.
@@ -181,6 +225,46 @@ the order the areas arrive in.
   root, set `DEVELOPMENT_TEAM`, open `Lab/GestureLab.xcodeproj`, and run
   the GestureLab scheme on a Vision Pro or the simulator, where a click is
   a pinch.
+
+## Driving the gestures
+
+Agents test the gestures in a simulator with no human. GestureKit's
+automation does it: a command at the gesture's level says the words a
+hand's gestures would, through the real adapters, and answers in JSON
+(`docs/automation-design.md` has the commands, and what each stands in
+for). Never touch a simulator you didn't make, such as a booted CI one.
+
+- **The self-test** proves every gesture works:
+  `scripts/gesture-selftest.sh`, through your build lock, since it builds.
+  It makes the simulator "GestureLab-Selftest" afresh, builds the lab and
+  `gesturekit-drive` into `build/gesture-selftest/`, and launches the lab on
+  port 48766. It drives every station, checking each outcome with `jq`,
+  runs the smoke on each and a script at launch, and prints `ok` for each
+  check. At the first failure it prints the answer and exits non-zero.
+  Whatever happens, it deletes the simulator and the build, unless
+  `GESTURE_SELFTEST_KEEP=1`. It takes about three minutes, most of it the
+  build.
+- **Driving by hand**: `scripts/gesture-drive.sh up --station pluck` (the
+  simulator "GestureLab-Auto", port 48765), then any of the driver's
+  commands:
+  - `targets` lists what's drivable by kind and id;
+  - `smoke` drives each target once;
+  - `pluck "item 7" pull=0,0,0.06`, `scroll by=600 on="item 3"`,
+    `carry panel-b by=0.1,0,0.2`, `place`, `tap surface at=0.4`,
+    `drag surface`, `flick surface`, `pickup surface`, `hold tab`, and
+    `tune press key=pickUpDelay value=0.3` drive one gesture each;
+  - `station press` chooses a station;
+  - `trace` and `wait` read the traces and wait until nothing is under way;
+  - `screenshot FILE.png` saves what the simulator shows;
+  - `script FILE.json` relaunches the lab running FILE's commands.
+
+  `--json` prints the app's whole answer and `--brief` its outcome and
+  result. `scripts/gesture-drive.sh down` deletes the simulator and the
+  build. `GESTURE_SIM`, `GESTUREKIT_AUTOMATION_PORT`, and
+  `GESTURE_DRIVE_WORK` choose others.
+- **Another app on GestureKit**: `swift run gesturekit-drive launch
+  <bundle-id>`, then the same commands, against the booted simulator, or
+  `--device`.
 
 ## Measuring the lab
 

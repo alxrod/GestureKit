@@ -19,6 +19,7 @@ struct GestureLabApp: App {
         let lab = LabModel(stations: stations)
         _lab = State(initialValue: lab)
         #if DEBUG
+        LabAutomation.register(lab)
         LabLoad.start(on: lab)
         #endif
     }

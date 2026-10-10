@@ -15,7 +15,9 @@ private let gazePanelLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit",
 /// (`PanelHandleRig`, `GrabHandleCarry`) or stood again.
 ///
 /// The panel is any entity: its origin is its middle, its front +z, and an
-/// attachment hung on it at its origin draws at its scale.
+/// attachment hung on it at its origin draws at its scale. In a debug build,
+/// a panel stood here is one GestureKit's automation can stand again, by its
+/// entity's name (`place`).
 @MainActor
 public enum GazePanel {
     /// How long `standBelowTheGaze(_:tracker:tuning:scales:recorder:quietly:waitingAtMost:because:)`
@@ -50,6 +52,10 @@ public enum GazePanel {
             panel.setScale(SIMD3(repeating: tuning.scale), relativeTo: nil)
         }
         let drawnAt = scales ? tuning.scale : panel.scale(relativeTo: nil).x
+        #if DEBUG
+        // GestureKit's automation stands it again the same way (`place`).
+        GestureAutomation.shared.notePanel(panel, tuning: tuning, recorder: recorder)
+        #endif
         /// Where it stood, in words, made only for a line that's kept.
         func stood() -> String {
             let whose = tracked == nil ? "the untracked head, 1.6 m up at the origin looking down -z" : "the head"

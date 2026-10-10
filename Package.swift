@@ -7,6 +7,9 @@ import PackageDescription
 // carry out GestureCore's rules on any RealityKit entity or SwiftUI view. Its
 // sources compile only for visionOS (`#if os(visionOS)`), so on the Mac it
 // builds empty.
+// gesturekit-drive: a Mac tool that drives an app's gestures in a visionOS
+// simulator through GestureKit's automation, in debug builds, which an app's
+// own repository runs with `swift run gesturekit-drive`.
 let package = Package(
     name: "GestureKit",
     platforms: [
@@ -16,10 +19,12 @@ let package = Package(
     products: [
         .library(name: "GestureCore", targets: ["GestureCore"]),
         .library(name: "GestureKit", targets: ["GestureKit"]),
+        .executable(name: "gesturekit-drive", targets: ["GestureKitDrive"]),
     ],
     targets: [
         .target(name: "GestureCore"),
         .target(name: "GestureKit", dependencies: ["GestureCore"]),
+        .executableTarget(name: "GestureKitDrive"),
         .testTarget(name: "GestureCoreTests", dependencies: ["GestureCore"]),
     ],
     swiftLanguageModes: [.v6]

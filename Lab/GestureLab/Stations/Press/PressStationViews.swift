@@ -124,6 +124,7 @@ private struct PressSurfaceView: View {
             tuning: station.pressTuning,
             recorder: station.trace,
             traceTitle: "Pinch on the surface",
+            automationID: "surface",
             canHold: true,
             canPickUp: true,
             dragAlongScrolls: station.dragAlongScrolls,
@@ -175,7 +176,8 @@ private struct PressTabView: View {
                 dragHasBegun: dragging,
                 tuning: station.holdWatch.tuning,
                 recorder: station.trace,
-                traceTitle: "Pinch on the tab"
+                traceTitle: "Pinch on the tab",
+                automationID: "tab"
             ) {
                 station.tabHeld()
             }
