@@ -2,8 +2,10 @@ import Testing
 @testable import GestureCore
 
 /// A pluckable container's watch over its hold: whether a pinch is under
-/// way, what a status line says, and the alarm once an item stays lifted
-/// with no pinch under way for more than half a second.
+/// way, what a status line says, the alarm once an item stays lifted with no
+/// pinch under way for more than half a second, and the safety net, which
+/// lets a hold go once nothing is heard from its pinch for a second, or at
+/// once with no pinch on it.
 @Suite struct PluckHoldWatchTests {
     let start = ContinuousClock.now
 
@@ -31,9 +33,9 @@ import Testing
     }
 
     /// A pinch that says it has the item, a gesture's claim, but from which
-    /// nothing is heard for a second: the alarm, as for a gesture whose end
-    /// went unheard, or a hand held still.
-    @Test func aClaimNothingIsHeardFromRaisesTheAlarmAfterASecond() {
+    /// nothing is heard for a second: the safety net lets the hold go, as
+    /// for a gesture whose end went unheard, or a hand held still.
+    @Test func aClaimNothingIsHeardFromIsLetGoAfterASecond() {
         var watch = PluckHoldWatch<Int>()
         watch.pinch(7, is: pinch(press: false, drag: true, lifted: false), at: at(0.1))
         watch.lifted(7, title: "item 7", at: at(0.25))
@@ -41,18 +43,34 @@ import Testing
         let due = at(0.6) + .seconds(1)
         #expect(watch.nextCheck == due)
         #expect(watch.verdict(at: at(1.59)) == .fine)
-        guard case .alarm(let alarm) = watch.verdict(at: due) else {
-            Issue.record("no alarm")
+        guard case .letGo(let alarm) = watch.verdict(at: due) else {
+            Issue.record("not let go")
             return
         }
-        #expect(alarm.kind == .heldWithNothingHeard)
+        #expect(alarm.kind == .letGoWithNothingHeard)
+        #expect(alarm.kind.letsGo)
         #expect(alarm.unclaimedFor == .zero)
-        #expect(alarm.line.hasPrefix("Scroll held by item 7 for 1.35 s with nothing heard from its pinch for 1.00 s"))
+        #expect(alarm.line.hasPrefix("Scroll held by item 7 for 1.35 s with nothing heard from its pinch for 1.00 s, let go by the safety net"))
+    }
+
+    /// The net's time is the caller's to set, from its tuning.
+    @Test func theNetsTimeIsTuned() {
+        var watch = PluckHoldWatch<Int>()
+        watch.unheardLimit = .seconds(2)
+        watch.pinch(7, is: pinch(press: true, lifted: false), at: at(0))
+        watch.lifted(7, title: "item 7", at: at(0.25))
+        #expect(watch.nextCheck == at(0.25) + .seconds(2))
+        #expect(watch.verdict(at: at(2)) == .fine)
+        guard case .letGo = watch.verdict(at: at(0.25) + .seconds(2)) else {
+            Issue.record("not let go")
+            return
+        }
     }
 
     /// Its press gone as the item lifted, its drag silent: no pinch is under
     /// way, and the alarm comes once that has lasted more than half a
-    /// second, once.
+    /// second, once; the net lets it go a second after it was last heard
+    /// from, its lift counting.
     @Test func aLiftKeptUpPastItsPressRaisesTheAlarmOnce() throws {
         var watch = PluckHoldWatch<Int>()
         watch.pinch(7, is: pinch(press: true, lifted: false), at: at(0))
@@ -68,15 +86,21 @@ import Testing
             return
         }
         #expect(alarm.kind == .heldWithNoPinchUnderWay)
+        #expect(!alarm.kind.letsGo)
         #expect(alarm.heldFor == at(0.8) - at(0.25))
         #expect(alarm.unclaimedFor == at(0.8) - at(0.26))
         #expect(alarm.line == "Scroll held by item 7 for 0.55 s with no pinch under way for 0.54 s; its pinch: item 7: press up, drag silent or ended, its item kept up past its press")
         watch.raised(alarm, at: at(0.8))
         #expect(watch.alarms == 1)
         #expect(watch.lastAlarm == alarm.line)
-        #expect(watch.verdict(at: at(3)) == .fine)
-        #expect(watch.nextCheck == nil)
-        watch.settled(because: "its pinch's tap", at: at(3))
+        #expect(watch.verdict(at: at(1)) == .fine)
+        #expect(watch.nextCheck == at(0.25) + .seconds(1))
+        guard case .letGo(let net) = watch.verdict(at: at(0.25) + .seconds(1)) else {
+            Issue.record("not let go")
+            return
+        }
+        #expect(net.kind == .letGoWithNothingHeard)
+        watch.settled(because: "the safety net", at: at(1.25))
         #expect(watch.alarms == 1)
         #expect(watch.nextCheck == nil)
     }
@@ -85,37 +109,41 @@ import Testing
     /// or its settle ends the watch's count.
     @Test func aDragOrASettleEndsTheCount() {
         var watch = PluckHoldWatch<Int>()
+        watch.pinch(7, is: pinch(press: true, lifted: false), at: at(0))
         watch.lifted(7, title: "item 7", at: at(0.25))
         watch.pinch(7, is: pinch(press: false), at: at(0.26))
         watch.pinch(7, is: pinch(press: false, drag: true), at: at(0.5))
         watch.heard("drag spoke", from: 7, title: "item 7", at: at(0.5))
         #expect(watch.unclaimedSince == nil)
         #expect(watch.verdict(at: at(1.4)) == .fine)
-        watch.pinch(7, is: pinch(press: false, drag: false), at: at(2))
-        watch.settled(because: "the drag ended", at: at(2))
+        watch.pinch(7, is: pinch(press: false, drag: false), at: at(1.45))
+        watch.settled(because: "the drag ended", at: at(1.45))
         #expect(watch.heldItem == nil)
         #expect(watch.unclaimedSince == nil)
         #expect(watch.verdict(at: at(4)) == .fine)
+        #expect(watch.nextCheck == nil)
     }
 
-    /// A pinch over while its item stays lifted: no pinch under way, and the
-    /// alarm says none is on the held item.
-    @Test func aPinchOverWithItsItemUpRaisesTheAlarm() {
+    /// A pinch over while its item stays lifted: the safety net lets the
+    /// hold go at once, there being no pinch on it.
+    @Test func aPinchOverWithItsItemUpIsLetGoAtOnce() {
         var watch = PluckHoldWatch<Int>()
         watch.pinch(7, is: pinch(press: true), at: at(0))
         watch.lifted(7, title: "item 7", at: at(0.25))
         watch.pinch(7, is: nil, at: at(0.4))
-        guard case .alarm(let alarm) = watch.verdict(at: at(1)) else {
-            Issue.record("no alarm")
+        guard case .letGo(let alarm) = watch.verdict(at: at(0.4)) else {
+            Issue.record("not let go")
             return
         }
+        #expect(alarm.kind == .letGoWithNoPinchOnIt)
         #expect(alarm.pinch == nil)
-        #expect(alarm.line.hasSuffix("no pinch on it under way"))
+        #expect(alarm.line == "Scroll held by item 7 for 0.15 s with no pinch on it, let go by the safety net")
     }
 
     /// A pinch on another item, its press down, is a pinch under way.
     @Test func aPinchElsewhereIsAPinchUnderWay() {
         var watch = PluckHoldWatch<Int>()
+        watch.pinch(7, is: pinch(press: true, lifted: false), at: at(0))
         watch.lifted(7, title: "item 7", at: at(0.25))
         watch.pinch(7, is: pinch(press: false), at: at(0.26))
         watch.pinch(8, is: .init(title: "item 8", pressIsDown: true, dragHasIt: false, holdsItsItem: false), at: at(0.5))

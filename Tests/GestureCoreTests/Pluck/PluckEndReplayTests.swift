@@ -43,9 +43,11 @@ import Testing
 /// gestures still say; a press on the item, or a pinch elsewhere, ends a
 /// pinch whose gestures went quiet, their ends unheard; and breaking free
 /// settles the item, so a carry never holds the scroll. So the scroll goes
-/// once the words say the pinch is over, in every order; where no word comes
-/// at all from a gesture that had the pinch, the next pinch on an item ends
-/// it, and the container's safety net lets its hold go.
+/// once the words say the pinch is over, in every order, at once but for the
+/// quiet; where no word comes at all from a gesture that had the pinch, the
+/// container's safety net lets its hold go a second after it last heard from
+/// it (`PluckTuning.unheardHoldRelease`), and raises the alarm, the only
+/// replays that do.
 @Suite struct PluckEndReplayTests {
     /// How a pinch went before the words that end it.
     enum Course: String, CaseIterable, CustomTestStringConvertible {
@@ -108,8 +110,12 @@ import Testing
         var heldAtNextTouch: Bool
         /// Held or lifted once the next pinch was over too.
         var heldAfterNext: Bool
+        /// Held or lifted right after the pinch's words, before any quiet.
+        var heldAfterWords: Bool
         /// Whether the watch raised its alarm before the next pinch.
         var alarmed: Bool
+        /// Whether the safety net let the hold go before the next pinch.
+        var netLetGo: Bool
         var log: [String]
 
         var failed: Bool { heldOnceOver || heldAtNextTouch || heldAfterNext }
@@ -187,10 +193,12 @@ import Testing
             say(ending, on: &grid)
             time += 0.01
         }
+        let heldAfterWords = isHeld(grid)
         time += quiet
         grid.advance(to: time)
         let heldOnceOver = isHeld(grid)
         let alarmed = !grid.alarms.isEmpty
+        let netLetGo = grid.alarms.contains { $0.kind.letsGo }
 
         // The next pinch: it touches, and the scroll view takes it only if
         // its scroll is on as it touches.
@@ -221,7 +229,16 @@ import Testing
         grid.scrollPhase(.idle)
         time += quiet
         grid.advance(to: time)
-        return Outcome(endings: endings, heldOnceOver: heldOnceOver, heldAtNextTouch: heldAtNextTouch, heldAfterNext: isHeld(grid), alarmed: alarmed, log: grid.log)
+        return Outcome(
+            endings: endings,
+            heldOnceOver: heldOnceOver,
+            heldAtNextTouch: heldAtNextTouch,
+            heldAfterNext: isHeld(grid),
+            heldAfterWords: heldAfterWords,
+            alarmed: alarmed,
+            netLetGo: netLetGo,
+            log: grid.log
+        )
     }
 
     /// Every ordered choice of `endings`, each said or not: none, each one,
@@ -296,18 +313,32 @@ import Testing
     func nothingHoldsTheScrollOnceThePinchIsOverWhateverWordsGoUnheard(_ course: Course, _ next: Next) {
         let outcomes = Self.orders(of: Self.endings(for: course)).map { Self.replay(course, $0, next: next) }
         let failed = outcomes.filter(\.failed)
-        withKnownIssue("Until the safety net: a hold outlives a pinch whose gestures' ends all went unheard", isIntermittent: true) {
-            #expect(failed.isEmpty, "\(course.rawValue), next on \(next.rawValue): \(failed.count) of \(outcomes.count) orders fail:\n\(Self.summary(outcomes))")
-        }
+        #expect(failed.isEmpty, "\(course.rawValue), next on \(next.rawValue): \(failed.count) of \(outcomes.count) orders fail:\n\(Self.summary(outcomes))")
     }
 
-    /// The watch's alarm is raised in exactly the replays whose scroll stays
-    /// held once the pinch is over.
+    /// The alarm is raised in exactly the replays where the safety net had
+    /// to let the hold go: where the item stayed lifted past its pinch's
+    /// words and those words don't say it was let go. Where they do, the
+    /// rules let it go first, and no alarm comes.
     @Test(arguments: Course.allCases)
-    func theAlarmIsRaisedWhereverTheScrollStaysHeld(_ course: Course) {
+    func theAlarmIsRaisedExactlyWhereTheSafetyNetLetsGo(_ course: Course) {
         let outcomes = Self.orders(of: Self.endings(for: course)).map { Self.replay(course, $0, next: .emptySpace) }
-        let wrong = outcomes.filter { $0.alarmed != $0.heldOnceOver }
-        #expect(wrong.isEmpty, "\(course.rawValue): the alarm and the hold disagree for \(wrong.map(\.spelled).joined(separator: ", "))")
+        let wrong = outcomes.filter { $0.alarmed != ($0.heldAfterWords && !Self.say(course, isLetGo: $0.endings)) }
+        #expect(wrong.isEmpty, "\(course.rawValue): the alarm is wrong for \(wrong.map(\.spelled).joined(separator: ", "))")
+        #expect(outcomes.allSatisfy { !$0.alarmed || $0.netLetGo })
+    }
+
+    /// Where the rules can tell the pinch is over, they let the scroll go at
+    /// once: right after the tap, the item going, or the drag's end or
+    /// cancel, nothing holds it. Only a still lift whose press's end is the
+    /// last word waits, for the quiet.
+    @Test(arguments: Course.allCases)
+    func aWordThatEndsThePinchLetsTheScrollGoAtOnce(_ course: Course) {
+        let outcomes = Self.orders(of: Self.endings(for: course))
+            .filter { order in [Ending.tapped, .itemWent, .dragEnded, .dragCancelled].contains { order.contains($0) } }
+            .map { Self.replay(course, $0, next: .emptySpace) }
+        let held = outcomes.filter(\.heldAfterWords)
+        #expect(held.isEmpty, "\(course.rawValue): held right after \(held.map(\.spelled).joined(separator: ", "))")
     }
 
     /// The orders are every ordered choice: 1,957 of six words.

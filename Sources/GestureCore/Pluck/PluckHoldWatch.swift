@@ -1,7 +1,7 @@
 /// A pluckable container's watch over its hold: the item lifted, and with it
 /// the scroll held off (`PluckContainer`), and whether a pinch backs it; what
-/// a status line shows of it; and an alarm when the hold outlives every
-/// pinch.
+/// a status line shows of it; an alarm when the hold outlives every pinch;
+/// and the safety net that lets such a hold go.
 ///
 /// A lifted item holds its container's scroll off until its pinch says it's
 /// let go. Should the words that say so never come, the hold outlives the
@@ -19,10 +19,16 @@
 /// - **An alarm** once an item has stayed lifted with no pinch under way for
 ///   more than half a second (`alarmAfter`), once a hold: a hand let go whose
 ///   words never came, or one held still whose press went as its item
-///   lifted, which nothing it's told can tell apart. Or once nothing has been
-///   heard from the held item's pinch for a second (`unheardAlarmAfter`),
-///   whatever its gestures last said: a hand held still, or a gesture whose
-///   end went unheard and so still says it has the pinch.
+///   lifted, which nothing it's told can tell apart. The pluck's own rules
+///   let such a lift go at that moment (`PluckTuning.quietRelease`), so the
+///   alarm says they didn't.
+/// - **The safety net**: the container never holds its scroll without a
+///   pinch. Its hold is let go at once should the item it holds for have no
+///   pinch under way at all, its rules having ended it, and once nothing has
+///   been heard from that pinch for `unheardLimit`, a second by default
+///   (`PluckTuning.unheardHoldRelease`), whatever its gestures last said: a
+///   gesture whose end went unheard, which still says it has the pinch, or a
+///   hand held perfectly still. Each is an alarm too, so a recurrence shows.
 ///
 /// It keeps the last ten things it was told, for an alarm's lines, and is
 /// cheap to tell a drag's every word (`heard(_:from:title:at:)` with no
@@ -71,9 +77,16 @@ public struct PluckHoldWatch<Item: Hashable> {
             /// An item stayed lifted, its container's scroll held, with no
             /// pinch under way, past `alarmAfter`.
             case heldWithNoPinchUnderWay
-            /// An item stayed lifted with nothing heard from its pinch for
-            /// `unheardAlarmAfter`, whatever its gestures last said.
-            case heldWithNothingHeard
+            /// The safety net let go of an item that stayed lifted with
+            /// nothing heard from its pinch for `unheardLimit`, whatever its
+            /// gestures last said.
+            case letGoWithNothingHeard
+            /// The safety net let go of an item that stayed lifted with no
+            /// pinch under way on it at all.
+            case letGoWithNoPinchOnIt
+
+            /// Whether the safety net let the hold go.
+            public var letsGo: Bool { self != .heldWithNoPinchUnderWay }
         }
 
         public var kind: Kind
@@ -97,8 +110,10 @@ public struct PluckHoldWatch<Item: Hashable> {
             switch kind {
             case .heldWithNoPinchUnderWay:
                 return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with no pinch under way for \(pluckWatchSeconds(unclaimedFor)) s; \(pinchText)"
-            case .heldWithNothingHeard:
-                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with nothing heard from its pinch for \(pluckWatchSeconds(unheardFor)) s; \(pinchText)"
+            case .letGoWithNothingHeard:
+                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with nothing heard from its pinch for \(pluckWatchSeconds(unheardFor)) s, let go by the safety net; \(pinchText)"
+            case .letGoWithNoPinchOnIt:
+                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with no pinch on it, let go by the safety net"
             }
         }
     }
@@ -110,6 +125,11 @@ public struct PluckHoldWatch<Item: Hashable> {
         /// Raise the alarm: trace it and log it (`alarmLines(for:at:)`), then
         /// tell the watch it's raised (`raised(_:at:)`).
         case alarm(Alarm)
+        /// Let the hold go, the safety net: raise the alarm as for `alarm`,
+        /// settle the held item through the container, tell the watch so
+        /// (`settled(because:at:)`), and tell the item's pinch its container
+        /// settled it.
+        case letGo(Alarm)
     }
 
     /// How long an item may stay lifted with no pinch under way before the
@@ -121,10 +141,10 @@ public struct PluckHoldWatch<Item: Hashable> {
     public static var eventsKept: Int { 10 }
 
     /// How long an item may stay lifted with nothing heard from its pinch
-    /// before the watch raises its alarm, whatever its gestures last said: a
-    /// second, twice as long as a hand pulling an item out goes without a
-    /// word.
-    public var unheardAlarmAfter: Duration = .seconds(1)
+    /// before the safety net lets it go, whatever its gestures last said: a
+    /// second unless the caller sets it from its tuning
+    /// (`PluckTuning.unheardHoldRelease`).
+    public var unheardLimit: Duration = .seconds(1)
 
     /// The item held lifted, and its title; nil while none is.
     public private(set) var heldItem: Item?
@@ -216,38 +236,45 @@ public struct PluckHoldWatch<Item: Hashable> {
 
     // MARK: What it says
 
-    /// What the caller does at `now`: raise the alarm once an item has stayed
-    /// lifted with no pinch under way for more than `alarmAfter`, once a
-    /// hold; nothing otherwise.
+    /// What the caller does at `now`: let the hold go, should the held item
+    /// have no pinch under way, or nothing have been heard from it for
+    /// `unheardLimit`; else raise the alarm once an item has stayed lifted
+    /// with no pinch under way for more than `alarmAfter`, once a hold;
+    /// nothing otherwise.
     public func verdict(at now: ContinuousClock.Instant) -> Verdict {
-        guard let heldSince, let title = heldTitle, let heldItem, !alarmedThisHold else { return .fine }
+        guard let heldSince, let title = heldTitle, let heldItem else { return .fine }
         let unheardFor = now - (lastHeard ?? heldSince)
-        let kind: Alarm.Kind
-        if let unclaimedSince, now - unclaimedSince > Self.alarmAfter {
-            kind = .heldWithNoPinchUnderWay
-        } else if unheardFor >= unheardAlarmAfter {
-            kind = .heldWithNothingHeard
-        } else {
-            return .fine
+        let alarm = { (kind: Alarm.Kind) in
+            Alarm(
+                kind: kind,
+                title: title,
+                heldFor: now - heldSince,
+                unclaimedFor: self.unclaimedSince.map { now - $0 } ?? .zero,
+                unheardFor: unheardFor,
+                pinch: self.pinches[heldItem]
+            )
         }
-        return .alarm(Alarm(
-            kind: kind,
-            title: title,
-            heldFor: now - heldSince,
-            unclaimedFor: unclaimedSince.map { now - $0 } ?? .zero,
-            unheardFor: unheardFor,
-            pinch: pinches[heldItem]
-        ))
+        if pinches[heldItem] == nil {
+            return .letGo(alarm(.letGoWithNoPinchOnIt))
+        }
+        if unheardFor >= unheardLimit {
+            return .letGo(alarm(.letGoWithNothingHeard))
+        }
+        if !alarmedThisHold, let unclaimedSince, now - unclaimedSince > Self.alarmAfter {
+            return .alarm(alarm(.heldWithNoPinchUnderWay))
+        }
+        return .fine
     }
 
     /// When the caller asks again (`verdict(at:)`) for something it might
-    /// say: the soonest alarm's time, while one may come; nil while nothing
-    /// can. Each word heard puts the second alarm's time off, so a caller
-    /// that looks then and finds nothing due looks again at this.
+    /// say: the soonest of the alarm's time and the safety net's, while an
+    /// item is held; nil while none is. Each word heard puts the net's time
+    /// off, so a caller that looks then and finds nothing due looks again at
+    /// this.
     public var nextCheck: ContinuousClock.Instant? {
-        guard let heldSince, !alarmedThisHold else { return nil }
-        let unheard = (lastHeard ?? heldSince) + unheardAlarmAfter
-        guard let unclaimedSince else { return unheard }
+        guard let heldSince else { return nil }
+        let unheard = (lastHeard ?? heldSince) + unheardLimit
+        guard !alarmedThisHold, let unclaimedSince else { return unheard }
         return min(unclaimedSince + Self.alarmAfter, unheard)
     }
 

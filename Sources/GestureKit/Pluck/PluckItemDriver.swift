@@ -221,10 +221,14 @@ final class PluckItemDriver {
         }
     }
 
-    /// The container settled the item, `because` of what: the app hears so,
-    /// once.
+    /// The container settled the item, `because` of what: its pinch hears
+    /// so, and is over if no gesture has it, and the app hears so, once.
     func containerSettledIt(because reason: String) {
         trace?.event("settled by the container", reason)
+        let told = pinches.containerSettledIt(at: .now)
+        if told.why == .settledByTheContainer {
+            apply(told, word: "settled by the container")
+        }
         reportSettled()
     }
 

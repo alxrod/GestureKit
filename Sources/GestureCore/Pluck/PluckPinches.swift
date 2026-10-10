@@ -519,6 +519,23 @@ public struct PluckPinches: Sendable {
         return Told(actions: actions, why: why, countdowns: Self.stopBoth, ended: ended)
     }
 
+    /// The item's container settled it, at `now`, as its safety net, the
+    /// app, another item's lift, or its scroll did: the pinch's item is down,
+    /// and a pinch neither gesture has is over, its end unseen; one a gesture
+    /// has goes on, with nothing to pull. Nothing for an item that isn't
+    /// lifted.
+    public mutating func containerSettledIt(at now: ContinuousClock.Instant) -> Told {
+        guard let press else { return Told(why: .noPinch) }
+        guard press.isLifted else { return Told(why: .notLifted) }
+        _ = tell { press in
+            press.settledByTheContainer()
+            return []
+        }
+        settledAt = settledAt ?? now
+        let ended = endIfOver(.unseen, at: now)
+        return Told(why: .settledByTheContainer, countdowns: ended == nil ? [] : Self.stopBoth, ended: ended)
+    }
+
     /// Whether nothing has been heard from the pinch under way's gestures for
     /// its tuning's quiet, at `now`.
     private func hasGoneQuiet(at now: ContinuousClock.Instant) -> Bool {

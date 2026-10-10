@@ -280,6 +280,27 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// begun that soon after letting go.
     public var quietRelease: Double
 
+    /// The safety net under a lifted item's hold: how long, in seconds, the
+    /// item may stay lifted, and its container's scroll held, with nothing
+    /// heard from its pinch, whatever its gestures last said, before the
+    /// container lets it go: a second (`PluckHoldWatch`). Should the item
+    /// have no pinch under way at all, the hold goes at once.
+    ///
+    /// The rules let a lift go as soon as the words say its pinch is over,
+    /// and after `quietRelease` where none can come. The net is for words
+    /// that should have come and didn't, as a drag whose end and cancel both
+    /// went unheard, which still says it has the pinch: then nothing can
+    /// tell, and the next pinch, wherever it lands, would meet the scroll
+    /// off. A pinch that has its item says something far more often than
+    /// once a second while it moves: a drag speaks at every move, and a hand
+    /// pulling moves its drag's 15 pt within a few tenths of a second of the
+    /// lift. So a second of silence from every gesture is a pinch let go
+    /// whose words went unheard, or a hand held perfectly still, its item
+    /// lifted, which then loses it; twice the quiet, so the rules always have
+    /// their turn first; and short enough that a stuck scroll lasts no longer
+    /// than a breath. Each time the net lets go, it's traced as an alarm.
+    public var unheardHoldRelease: Double
+
     /// How long, in seconds, after a pinch that lifted its item is over its
     /// item's tap is still taken as its release, which is no tap: a second.
     /// The tap comes as a pinch is let go, before or after its gestures
@@ -339,6 +360,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         scrollSettlesLiftedItem: Bool = true,
         pressEndSettlesLiftedItem: Bool = false,
         quietRelease: Double = 0.5,
+        unheardHoldRelease: Double = 1,
         releaseTapGrace: Double = 1,
         holdsFromTheDrag: Bool = false,
         pullDragIsSimultaneous: Bool = true,
@@ -367,6 +389,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.scrollSettlesLiftedItem = scrollSettlesLiftedItem
         self.pressEndSettlesLiftedItem = pressEndSettlesLiftedItem
         self.quietRelease = quietRelease
+        self.unheardHoldRelease = unheardHoldRelease
         self.releaseTapGrace = releaseTapGrace
         self.holdsFromTheDrag = holdsFromTheDrag
         self.pullDragIsSimultaneous = pullDragIsSimultaneous
@@ -410,6 +433,11 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// before it's taken as let go.
     public var quietReleaseTime: Duration {
         .seconds(quietRelease)
+    }
+
+    /// How long a hold unheard from lasts before the safety net lets it go.
+    public var unheardHoldReleaseTime: Duration {
+        .seconds(unheardHoldRelease)
     }
 
     /// The break-free distance in the item's points, at `pointsPerMeter`, as
@@ -517,6 +545,7 @@ extension PluckTuning: Tunable {
         .toggle(\.scrollSettlesLiftedItem, key: "scrollSettlesLiftedItem", title: "A scroll settles a lifted item"),
         .toggle(\.pressEndSettlesLiftedItem, key: "pressEndSettlesLiftedItem", title: "The press's end settles a lifted item"),
         .number(\.quietRelease, key: "quietRelease", title: "A lift kept past its press, unheard, settles after", unit: "s", range: 0.1...3, step: 0.05),
+        .number(\.unheardHoldRelease, key: "unheardHoldRelease", title: "Safety net: a hold unheard from goes after", unit: "s", range: 0.25...5, step: 0.05),
         .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),
         .toggle(\.holdsFromTheDrag, key: "holdsFromTheDrag", title: "Hold counts from the drag, not a button"),
         .toggle(\.pullDragIsSimultaneous, key: "pullDragIsSimultaneous", title: "Pull drag is simultaneous"),

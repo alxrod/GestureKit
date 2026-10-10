@@ -24,7 +24,8 @@ struct PluckReplayGrid {
     private(set) var now: ContinuousClock.Instant
     private(set) var container: PluckContainer<String>
     private(set) var watch = PluckHoldWatch<String>()
-    /// The alarms the watch raised, as the model raises them.
+    /// The alarms the watch raised, as the model raises them, the safety
+    /// net's among them.
     private(set) var alarms: [PluckHoldWatch<String>.Alarm] = []
     /// Each item's pinches, as its driver keeps them; an item that went
     /// comes back with a driver of its own, as a view made again does.
@@ -48,6 +49,7 @@ struct PluckReplayGrid {
         self.tuning = tuning
         now = start
         container = PluckContainer(tuning: tuning)
+        watch.unheardLimit = tuning.unheardHoldReleaseTime
     }
 
     /// The time `seconds` into the replay.
@@ -160,13 +162,15 @@ struct PluckReplayGrid {
         let wasScrolling = container.phase.isScrolling
         let change = container.scrollPhaseChanged(to: phase, at: now)
         watch.note("scroll \(phase.rawValue)", at: now)
-        if change.settled != nil { watch.settled(because: "the container's scroll", at: now) }
+        if change.settled != nil { watched { $0.settled(because: "the container's scroll", at: $1) } }
         log.append("scroll phase \(phase.rawValue): holds \(container.holdsItsScroll)")
         let began = phase.isScrolling && !wasScrolling
-        guard began else { return }
         for item in pinched.sorted() {
-            let told = tell(item) { $0.containerScrolled(at: $1) }
-            apply(told, to: item, word: "container scrolled")
+            if began {
+                let told = tell(item) { $0.containerScrolled(at: $1) }
+                apply(told, to: item, word: "container scrolled")
+            }
+            if change.settled == item { containerSettled(item) }
         }
     }
 
@@ -180,12 +184,43 @@ struct PluckReplayGrid {
 
     // MARK: The model's watch
 
+    /// Tells the watch something, and lets the hold go at once should the
+    /// safety net say so, as the model's `watched` does.
+    private mutating func watched(_ change: (inout PluckHoldWatch<String>, ContinuousClock.Instant) -> Void) {
+        change(&watch, now)
+        if case .letGo(let alarm) = watch.verdict(at: now) { letGo(alarm) }
+    }
+
     /// Does what the watch says now, as the model's look does.
     private mutating func lookAtTheHold() {
-        guard case .alarm(let alarm) = watch.verdict(at: now) else { return }
+        switch watch.verdict(at: now) {
+        case .alarm(let alarm): raise(alarm)
+        case .letGo(let alarm): letGo(alarm)
+        case .fine: break
+        }
+    }
+
+    private mutating func raise(_ alarm: PluckHoldWatch<String>.Alarm) {
         alarms.append(alarm)
         log.append("alarm: \(alarm.line)")
         watch.raised(alarm, at: now)
+    }
+
+    /// The safety net, as the model's `letGo` does it.
+    private mutating func letGo(_ alarm: PluckHoldWatch<String>.Alarm) {
+        raise(alarm)
+        let lifted = container.liftedItem
+        _ = container.settleLiftedItem()
+        watch.settled(because: "the safety net", at: now)
+        if let lifted { containerSettled(lifted) }
+    }
+
+    /// The container settled `item`: its driver, should it have a pinch
+    /// under way, tells its pinch, as `containerSettledIt(because:)` does.
+    private mutating func containerSettled(_ item: String) {
+        guard pinched.contains(item) else { return }
+        let told = tell(item) { $0.containerSettledIt(at: $1) }
+        if told.why == .settledByTheContainer { apply(told, to: item, word: "settled by the container") }
     }
 
     // MARK: The driver's wiring
@@ -264,7 +299,7 @@ struct PluckReplayGrid {
         }
         guard pinch != reported[item] else { return }
         reported[item] = pinch
-        watch.pinch(item, is: pinch, at: now)
+        watched { $0.pinch(item, is: pinch, at: $1) }
     }
 
     private mutating func run(_ countdowns: [PluckPinches.Countdown], for item: String) {
@@ -283,9 +318,10 @@ struct PluckReplayGrid {
         switch action {
         case .lift:
             let change = container.lift(item, at: now)
-            if change.settled != item { watch.lifted(item, title: item, at: now) }
+            if change.settled != item { watched { $0.lifted(item, title: item, at: $1) } }
+            if let displaced = change.settled, displaced != item { containerSettled(displaced) }
         case .settle:
-            if container.settle(item).settled != nil { watch.settled(because: "its pinch", at: now) }
+            if container.settle(item).settled != nil { watched { $0.settled(because: "its pinch", at: $1) } }
         default:
             break
         }

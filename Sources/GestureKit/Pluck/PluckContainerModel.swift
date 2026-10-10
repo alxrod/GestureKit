@@ -16,8 +16,11 @@ private let pluckContainerLogger = Logger(subsystem: "net.alexbrodriguez.gesture
 /// hold watches moves along most closely.
 ///
 /// It watches its hold (`PluckHoldWatch`): what a status line shows of it
-/// (`status`), and an alarm, traced in red and logged, once an item has
-/// stayed lifted with no pinch under way for more than half a second.
+/// (`status`); an alarm, traced in red and logged, once an item has stayed
+/// lifted with no pinch under way for more than half a second; and the safety
+/// net, which lets the hold go, traced as an alarm too, once nothing has been
+/// heard from the held item's pinch for `PluckTuning.unheardHoldRelease`, or
+/// at once should it have no pinch under way.
 ///
 /// Make one per scroll view, keep it with the view's state, and hand it to
 /// `pluckContainer(_:tuning:trace:)` on the scroll view; each item inside
@@ -71,6 +74,7 @@ public final class PluckContainerModel {
         get { container.tuning }
         set {
             container.tuning = newValue
+            watch.unheardLimit = newValue.unheardHoldReleaseTime
             mirror()
         }
     }
@@ -193,10 +197,15 @@ public final class PluckContainerModel {
 
     // MARK: The watch
 
-    /// Tells the watch something that may change what it says, then shows
-    /// its status and looks again when it next may say something.
+    /// Tells the watch something that may change what it says, then lets
+    /// the hold go at once should the safety net say so, shows its status,
+    /// and looks again when it next may say something.
     private func watched(_ change: (inout PluckHoldWatch<AnyHashable>) -> Void) {
         change(&watch)
+        let now = ContinuousClock.now
+        if case .letGo(let alarm) = watch.verdict(at: now) {
+            letGo(alarm, at: now)
+        }
         showStatus()
         scheduleWatchCheck()
     }
@@ -215,15 +224,32 @@ public final class PluckContainerModel {
     }
 
     /// Does what the watch says now: raises its alarm, traced in red with
-    /// the state and the last ten things it was told, and logged.
+    /// the state and the last ten things it was told, and logged; or lets
+    /// the hold go, the safety net, traced so too.
     private func lookAtTheHold() {
         watchCheck = nil
         let now = ContinuousClock.now
-        if case .alarm(let alarm) = watch.verdict(at: now) {
-            raise(alarm, at: now)
+        switch watch.verdict(at: now) {
+        case .alarm(let alarm): raise(alarm, at: now)
+        case .letGo(let alarm): letGo(alarm, at: now)
+        case .fine: break
         }
         showStatus()
         scheduleWatchCheck()
+    }
+
+    /// The safety net: the held item settles, the container's scroll on
+    /// again, its pinch hears its container settled it, and the alarm says
+    /// so.
+    private func letGo(_ alarm: PluckHoldWatch<AnyHashable>.Alarm, at now: ContinuousClock.Instant) {
+        raise(alarm, at: now)
+        let lifted = liftedItem
+        _ = container.settleLiftedItem()
+        mirror()
+        watch.settled(because: "the safety net", at: now)
+        if let lifted {
+            driver(of: lifted)?.containerSettledIt(because: "the safety net: \(alarm.line)")
+        }
     }
 
     private func raise(_ alarm: PluckHoldWatch<AnyHashable>.Alarm, at now: ContinuousClock.Instant) {
@@ -231,9 +257,11 @@ public final class PluckContainerModel {
         watch.raised(alarm, at: now)
         let why = switch alarm.kind {
         case .heldWithNoPinchUnderWay: "no pinch under way"
-        case .heldWithNothingHeard: "nothing heard from its pinch"
+        case .letGoWithNothingHeard: "nothing heard from its pinch: let go"
+        case .letGoWithNoPinchOnIt: "no pinch on it: let go"
         }
-        let traced = recorder?.alarm("Pluck", title: "Scroll held by \(alarm.title), \(why)", lines: lines, outcome: "stuck") ?? false
+        let outcome = alarm.kind.letsGo ? "let go by the net" : "stuck"
+        let traced = recorder?.alarm("Pluck", title: "Scroll held by \(alarm.title), \(why)", lines: lines, outcome: outcome) ?? false
         if !traced {
             let events = lines.dropFirst().map { "\($0.0) \($0.1)" }.joined(separator: "; ")
             pluckContainerLogger.info("Alarm: \(alarm.line, privacy: .public); \(events, privacy: .public)")
