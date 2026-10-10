@@ -85,8 +85,14 @@ final class PluckItemDriver {
     /// Whether the pinch under way broke its item free.
     private var brokeFree = false
 
+    /// The pinch as last told to the container's watch.
+    private var reportedPinch: PluckHoldWatch<AnyHashable>.Pinch?
+
     /// The item's id, as the last word gave it.
     var itemID: AnyHashable? { setting?.id }
+
+    /// The item's title, as the last word gave it.
+    var title: String { setting?.title ?? "an item" }
 
     /// Whether its pinch has its item kept up past its press, neither of its
     /// gestures having it.
@@ -102,6 +108,7 @@ final class PluckItemDriver {
     /// The item's button was pressed, `isPressed`, or let go.
     func pressChanged(_ isPressed: Bool, _ setting: Setting) {
         adopt(setting)
+        setting.model?.heard(isPressed ? "press down" : "press up", from: self)
         if isPressed {
             apply(pinches.pressBegan(at: .now), word: "press down")
         } else {
@@ -113,6 +120,7 @@ final class PluckItemDriver {
     /// it, which is no tap.
     func tapped(_ setting: Setting) {
         adopt(setting)
+        setting.model?.heard("tap", from: self)
         handle(pinches.tapped(at: .now), synthesized: false)
     }
 
@@ -122,12 +130,15 @@ final class PluckItemDriver {
         let moved = value.translation3D
         let translation = SIMD3(moved.x, moved.y, moved.z)
         lastLocation = value.location3D
+        // The drag's first word of a pinch is kept; the rest note the time.
+        setting.model?.heard(pinches.isDragging ? nil : "drag spoke", from: self)
         apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter(setting), at: .now), word: "drag", translation: translation)
     }
 
     /// The pull's drag ended, let go.
     func dragEnded(_ value: DragGesture.Value, _ setting: Setting) {
         adopt(setting)
+        setting.model?.heard("drag end", from: self)
         lastLocation = value.location3D
         apply(pinches.dragEnded(at: .now), word: "drag end")
         // An item with no button hears its tap as the drag's end of a pinch
@@ -142,6 +153,7 @@ final class PluckItemDriver {
     func dragStopped(_ setting: Setting) {
         guard pinches.isDragging else { return }
         adopt(setting)
+        setting.model?.heard("drag cancelled", from: self)
         apply(pinches.dragCancelled(at: .now), word: "drag cancelled")
     }
 
@@ -149,6 +161,7 @@ final class PluckItemDriver {
     func itemWent() {
         holdCount?.cancel()
         armCount?.cancel()
+        setting?.model?.heard("item went", from: self)
         apply(pinches.itemWent(at: .now), word: "item went")
     }
 
@@ -327,6 +340,7 @@ final class PluckItemDriver {
             // measured from.
             readScrollOffset()
             showFollow()
+            reportPinch()
             return
         }
         note(word, told, translation: translation, extra: extra)
@@ -335,6 +349,7 @@ final class PluckItemDriver {
         noteHeld()
         if let ended = told.ended { finish(ended) }
         showFollow()
+        reportPinch()
     }
 
     /// Handles the item's tap: no tap for a release, the app's tap otherwise.
@@ -347,6 +362,24 @@ final class PluckItemDriver {
         if !tap.isRelease { setting?.perform(.tapped) }
         if let ended = tap.ended { finish(ended) }
         showFollow()
+        reportPinch()
+    }
+
+    /// Tells the container's watch what the pinch is now, should that have
+    /// changed: whether its press is down, its drag has it, and its item is
+    /// lifted; or that it's over. A drag's moves change none of it.
+    private func reportPinch() {
+        let pinch = pinches.press.map { press in
+            PluckHoldWatch<AnyHashable>.Pinch(
+                title: title,
+                pressIsDown: pinches.isHolding,
+                dragHasIt: pinches.isDragging,
+                holdsItsItem: press.isLifted
+            )
+        }
+        guard pinch != reportedPinch else { return }
+        reportedPinch = pinch
+        setting?.model?.pinchChanged(of: self, to: pinch)
     }
 
     /// Draws the lifted item where its tether says, should that have
@@ -360,7 +393,7 @@ final class PluckItemDriver {
         guard let setting else { return }
         switch action {
         case .lift:
-            if let change = setting.model?.lift(setting.id, by: self) {
+            if let change = setting.model?.lift(setting.id, title: setting.title, by: self) {
                 trace?.event("lift", change.scrollHoldChanged ? "the scroll held off" : "the scroll goes on")
             } else {
                 trace?.event("lift", "no container")
@@ -400,7 +433,7 @@ final class PluckItemDriver {
             trace?.event("spawn cancelled", "what spawned is taken away")
             setting.perform(.spawnCancelled)
         case .settle:
-            let change = setting.model?.settle(setting.id)
+            let change = setting.model?.settle(setting.id, because: why.description)
             if case .givenBackToTheScroll = why {
                 pluckItemLogger.info("The pinch on \(setting.title) was given back to the scroll: \(why.description, privacy: .public)")
             }

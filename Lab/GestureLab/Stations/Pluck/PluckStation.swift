@@ -293,30 +293,86 @@ private struct PluckLabGridWindow: View {
     }
 }
 
-/// Below the pluck's grid: the cards in the room, what was last tapped, and
-/// Clear the room.
+/// Below the pluck's grid: the grid's scroll and the pinch under way, in a
+/// view of its own (`PluckLabScrollStatus`); the cards in the room, what was
+/// last tapped, and Clear the room.
 private struct PluckLabGridStatus: View {
     let station: PluckStation
 
     var body: some View {
-        HStack(spacing: 20) {
-            Text(pluckLabCardsText(station))
-                .font(.system(size: 20, weight: .semibold).monospacedDigit())
-            if let tapped = station.lastTapped {
-                Text("Tapped item \(tapped) · \(station.taps)")
-                    .font(.system(size: 18).monospacedDigit())
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            PluckLabScrollStatus(container: station.container)
+            HStack(spacing: 20) {
+                Text(pluckLabCardsText(station))
+                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                if let tapped = station.lastTapped {
+                    Text("Tapped item \(tapped) · \(station.taps)")
+                        .font(.system(size: 18).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button("Clear the room", systemImage: "trash") {
+                    station.clearCards()
+                }
+                .disabled(station.cardCount == 0)
             }
-            Button("Clear the room", systemImage: "trash") {
-                station.clearCards()
-            }
-            .disabled(station.cardCount == 0)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .glassBackgroundEffect()
         .padding(.top, 16)
     }
+}
+
+/// The grid's scroll, always in view: on, or held by which item and since
+/// when, with how long it has been held; the pinch under way, or the one
+/// the pluck's rules still keep with no gesture having it; and, in red, the
+/// last alarm, raised once the scroll stayed held with no pinch under way
+/// for more than half a second. It reads only the container's status,
+/// which changes as an item lifts or settles, a gesture takes or lets go of
+/// a pinch, or the alarm is raised, never at a drag's every word.
+private struct PluckLabScrollStatus: View {
+    let container: PluckContainerModel
+
+    var body: some View {
+        let status = container.status
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Circle()
+                    .fill(status.heldBy == nil ? Color.green : Color.orange)
+                    .frame(width: 12, height: 12)
+                if let heldBy = status.heldBy, let since = status.heldSince {
+                    Text("Scroll held by \(heldBy) since \(since.formatted(.dateTime.hour().minute().second()))")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(since, style: .timer)
+                        .font(.system(size: 18).monospacedDigit())
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Scroll on")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+            }
+            Text(pluckLabPinchText(status))
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if let alarm = status.lastAlarm {
+                Text("Alarm ×\(status.alarms): \(alarm)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+            }
+        }
+        .frame(width: 1000, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The pinch under way, as the status line says it.
+private func pluckLabPinchText(_ status: PluckContainerStatus) -> String {
+    guard let pinch = status.pinch else { return "No pinch under way" }
+    return status.pinchIsUnderWay
+        ? "Pinch under way on \(pinch)"
+        : "No pinch under way; the pluck still keeps one on \(pinch)"
 }
 
 /// The pluck's part of the space: each card that broke free of the grid,
