@@ -8,19 +8,28 @@ private let pluckContainerLogger = Logger(subsystem: "net.alexbrodriguez.gesture
 
 /// A scrolling container whose items pluck, a grid or a list, as its scroll
 /// view and its items tell it: which item is lifted, at most one, which its
-/// items draw; whether its scroll is held off under it, as the tuning says;
-/// its scroll view's phase and its scroll offset, which it tells the pinch
-/// under way on each item, so a scroll during a pinch, or its content
-/// moving at all, makes it a scroll before its hold, and a scroll settles a
-/// lifted item, as the tuning says; and the axes it scrolls along, which a
-/// hold watches moves along most closely.
+/// items draw; whether its scroll is held off, as the tuning says, which its
+/// scroll view is given (`scrollIsHeldOff`); its scroll view's phase and its
+/// scroll offset, which it tells the pinch under way on each item, so a
+/// scroll during a pinch, or its content moving at all, makes it a scroll
+/// before its hold, and a scroll settles a lifted item, as the tuning says;
+/// and the axes it scrolls along, which a hold watches moves along most
+/// closely.
 ///
-/// It watches its hold (`PluckHoldWatch`): what a status line shows of it
-/// (`status`); an alarm, traced in red and logged, once an item has stayed
-/// lifted with no pinch under way for more than half a second; and the safety
-/// net, which lets the hold go, traced as an alarm too, once nothing has been
-/// heard from the held item's pinch for `PluckTuning.unheardHoldRelease`, or
-/// at once should it have no pinch under way.
+/// Its watch (`PluckHoldWatch`) decides what the scroll view is given: held
+/// off from the lift until the pinch that lifted the item lets go, never
+/// back on while that pinch is still down, unless the tuning says
+/// (`PluckTuning.scrollComesBackMidPinch`). It shows, in a status line
+/// (`status`), that value, the container's own hold and lifted item, the
+/// watch's, what the scroll view has, as a debug build's probe reads it
+/// (`pluckScrollViewProbe(_:)`), and its last phase. It raises alarms,
+/// traced in red and logged: an item lifted with no pinch under way past
+/// half a second; those views disagreeing; a pinch the rules told as a
+/// scroll the scroll view never took. And its safety net lets a hold go,
+/// traced as an alarm too, once nothing has been heard from the pinch that
+/// backs it for `PluckTuning.unheardHoldRelease`, or for a pinch whose item
+/// settled, `unheardScrollHoldRelease`, or at once should a lifted item have
+/// no pinch under way.
 ///
 /// Make one per scroll view, keep it with the view's state, and hand it to
 /// `pluckContainer(_:tuning:trace:)` on the scroll view; each item inside
@@ -31,16 +40,24 @@ public final class PluckContainerModel {
     /// is.
     public private(set) var liftedItem: AnyHashable?
 
-    /// Whether its scroll is held off: an item is lifted, and the tuning
-    /// stops the scroll under one.
+    /// Whether the container holds its scroll: an item is lifted, and the
+    /// tuning stops the scroll under one. What its scroll view is given is
+    /// `scrollIsHeldOff`, which lasts until the pinch that took it lets go.
     public private(set) var holdsItsScroll = false
+
+    /// Whether its scroll view is held off: what `pluckContainer` gives it,
+    /// as its watch says, from a lift until the pinch that lifted the item
+    /// lets go, and never without a pinch backing it past its safety net.
+    public private(set) var scrollIsHeldOff = false
 
     /// Its scroll view's phase, as last told.
     public private(set) var phase = PluckScrollPhase.idle
 
-    /// What a status line shows of its hold and the pinch under way, which
-    /// changes only as an item lifts or settles, a gesture takes or lets go
-    /// of a pinch, or the alarm is raised, never at a drag's every word.
+    /// What a status line shows of its hold, its scroll view, and the pinch
+    /// under way, which changes only as an item lifts or settles, the scroll
+    /// is held or let go, a gesture takes or lets go of a pinch, the scroll
+    /// view says a phase or a probe reads it anew, or an alarm is raised,
+    /// never at a drag's every word.
     public private(set) var status = PluckContainerStatus()
 
     /// Its scroll offset, as its scroll view last said, in points; nil
@@ -51,6 +68,10 @@ public final class PluckContainerModel {
 
     /// The axes it scrolls along, as its modifier was last given them.
     @ObservationIgnored var scrollAxes: PluckScrollAxes = .vertical
+
+    /// Reads what its scroll view has, as a debug build's probe sets it
+    /// (`pluckScrollViewProbe(_:)`); nil without one.
+    @ObservationIgnored var scrollViewReader: (@MainActor () -> PluckHoldWatch<AnyHashable>.ScrollViewReading?)?
 
     @ObservationIgnored private var container = PluckContainer<AnyHashable>()
     @ObservationIgnored var recorder: TraceRecorder?
@@ -63,9 +84,15 @@ public final class PluckContainerModel {
     @ObservationIgnored private var watch = PluckHoldWatch<AnyHashable>()
     /// The watch's next look, while one is due.
     @ObservationIgnored private var watchCheck: Task<Void, Never>?
-    /// When the hold under way began, on the watch's clock and the wall's.
+    /// Whether the safety net is letting a hold go, so what that changes
+    /// asks it nothing more.
+    @ObservationIgnored private var isLettingGo = false
+    /// When the scroll hold under way began, and the scroll view's last
+    /// phase came, on the watch's clock and the wall's.
     @ObservationIgnored private var heldSinceInstant: ContinuousClock.Instant?
     @ObservationIgnored private var heldSinceDate: Date?
+    @ObservationIgnored private var phaseInstant: ContinuousClock.Instant?
+    @ObservationIgnored private var phaseDate: Date?
 
     public init() {}
 
@@ -75,6 +102,8 @@ public final class PluckContainerModel {
         set {
             container.tuning = newValue
             watch.unheardLimit = newValue.unheardHoldReleaseTime
+            watch.unheardScrollLimit = newValue.unheardScrollHoldReleaseTime
+            watch.scrollComesBackMidPinch = newValue.scrollComesBackMidPinch
             mirror()
         }
     }
@@ -90,9 +119,9 @@ public final class PluckContainerModel {
     public func settleLiftedItem() {
         let lifted = liftedItem
         _ = container.settleLiftedItem()
+        if lifted != nil { watch.settled(because: "the app settled it", at: .now) }
         mirror()
         if let lifted {
-            watched { $0.settled(because: "the app settled it", at: .now) }
             driver(of: lifted)?.containerSettledIt(because: "the app settled it")
         }
     }
@@ -106,10 +135,10 @@ public final class PluckContainerModel {
     /// lifted, which reports settling.
     func lift(_ item: AnyHashable, title: String, by driver: PluckItemDriver) -> PluckContainer<AnyHashable>.Change {
         let change = container.lift(item, at: .now)
-        mirror()
         if change.settled != item {
-            watched { $0.lifted(item, title: title, at: .now) }
+            watch.lifted(item, title: title, at: .now)
         }
+        mirror()
         if let displaced = change.settled, displaced != item {
             self.driver(of: displaced)?.containerSettledIt(because: "another item lifted")
         }
@@ -119,10 +148,10 @@ public final class PluckContainerModel {
     /// `item` settled, as its pinch says, `because` of what.
     func settle(_ item: AnyHashable, because reason: String) -> PluckContainer<AnyHashable>.Change {
         let change = container.settle(item)
-        mirror()
         if change.settled != nil {
-            watched { $0.settled(because: reason, at: .now) }
+            watch.settled(because: reason, at: .now)
         }
+        mirror()
         return change
     }
 
@@ -134,10 +163,39 @@ public final class PluckContainerModel {
     }
 
     /// `driver`'s item's pinch is `pinch` now, as its rules say, or over,
-    /// nil.
+    /// nil: the scroll hold it took may go, and the scroll view is read.
     func pinchChanged(of driver: PluckItemDriver, to pinch: PluckHoldWatch<AnyHashable>.Pinch?) {
         guard let item = driver.itemID else { return }
-        watched { $0.pinch(item, is: pinch, at: .now) }
+        watch.pinch(item, is: pinch, at: .now)
+        readScrollView()
+        watchChanged()
+    }
+
+    /// The rules told `driver`'s pinch as the container's scroll: should the
+    /// scroll view not take it, the watch says so.
+    func ruledAScroll(by driver: PluckItemDriver) {
+        watch.ruledAScroll(on: driver.title, at: .now)
+        watchChanged()
+    }
+
+    /// What `pluckContainer` gave its scroll view, `heldOff`, as it gave it.
+    func scrollGiven(heldOff: Bool) {
+        watch.scrollGiven(heldOff: heldOff, at: .now)
+        watchChanged()
+        // What the scroll view has, once the value has reached it.
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.readScrollView()
+            self?.watchChanged()
+        }
+    }
+
+    /// A debug build's probe saw the scroll view's pan change its state, as
+    /// to began, `panBegan`, or otherwise.
+    func scrollViewPanChanged(panBegan: Bool) {
+        guard let reading = scrollViewReader?() else { return }
+        watch.scrollViewRead(reading, panBegan: panBegan, at: .now)
+        watchChanged()
     }
 
     /// `driver`'s item began a pinch: each other item's pinch hears of it,
@@ -161,17 +219,20 @@ public final class PluckContainerModel {
     func scrollPhaseChanged(to phase: PluckScrollPhase) {
         let wasScrolling = self.phase.isScrolling
         self.phase = phase
-        let change = container.scrollPhaseChanged(to: phase, at: .now)
-        mirror()
-        watch.note("scroll \(phase.rawValue)", at: .now)
+        let now = ContinuousClock.now
+        let change = container.scrollPhaseChanged(to: phase, at: now)
+        watch.scrollViewSaid(phase, at: now)
         if change.settled != nil {
-            watched { $0.settled(because: "the container's scroll", at: .now) }
+            watch.settled(because: "the container's scroll", at: now)
         }
+        mirror()
+        readScrollView()
         traceScroll(phase, settled: change.settled)
         let began = phase.isScrolling && !wasScrolling
         for driver in Array(pinchedItems.values) {
             driver.containerPhaseChanged(to: phase, scrollBegan: began, settledIt: change.settled != nil && change.settled == driver.itemID)
         }
+        watchChanged()
     }
 
     /// Its scroll view's content offset changed to `offset`: each pinch
@@ -197,14 +258,17 @@ public final class PluckContainerModel {
 
     // MARK: The watch
 
-    /// Tells the watch something that may change what it says, then lets
-    /// the hold go at once should the safety net say so, shows its status,
-    /// and looks again when it next may say something.
-    private func watched(_ change: (inout PluckHoldWatch<AnyHashable>) -> Void) {
-        change(&watch)
+    /// After the watch was told something: lets a hold go at once should the
+    /// safety net say so, gives the scroll view what the watch holds, shows
+    /// its status, and looks again when it next may say something.
+    private func watchChanged() {
         let now = ContinuousClock.now
-        if case .letGo(let alarm) = watch.verdict(at: now) {
+        if !isLettingGo, case .letGo(let alarm) = watch.verdict(at: now) {
             letGo(alarm, at: now)
+        }
+        if scrollIsHeldOff != watch.holdsTheScroll {
+            scrollIsHeldOff = watch.holdsTheScroll
+            pluckContainerLogger.info("The container's scroll view is \(self.scrollIsHeldOff ? "held off" : "on again", privacy: .public)")
         }
         showStatus()
         scheduleWatchCheck()
@@ -225,28 +289,36 @@ public final class PluckContainerModel {
 
     /// Does what the watch says now: raises its alarm, traced in red with
     /// the state and the last ten things it was told, and logged; or lets
-    /// the hold go, the safety net, traced so too.
+    /// a hold go, the safety net, traced so too.
     private func lookAtTheHold() {
         watchCheck = nil
+        readScrollView()
         let now = ContinuousClock.now
         switch watch.verdict(at: now) {
         case .alarm(let alarm): raise(alarm, at: now)
         case .letGo(let alarm): letGo(alarm, at: now)
         case .fine: break
         }
-        showStatus()
-        scheduleWatchCheck()
+        watchChanged()
     }
 
-    /// The safety net: the held item settles, the container's scroll on
-    /// again, its pinch hears its container settled it, and the alarm says
-    /// so.
+    /// The safety net: the scroll comes back on; the lifted item, should one
+    /// be, settles, its pinch hearing its container settled it; and the
+    /// alarm says so.
     private func letGo(_ alarm: PluckHoldWatch<AnyHashable>.Alarm, at now: ContinuousClock.Instant) {
+        isLettingGo = true
+        defer { isLettingGo = false }
         raise(alarm, at: now)
+        watch.releaseTheScroll(because: "the safety net", at: now)
         let lifted = liftedItem
-        _ = container.settleLiftedItem()
-        mirror()
+        if lifted != nil { _ = container.settleLiftedItem() }
+        // The container's state first, so the watch's settle takes no hold
+        // for an item the container no longer has; and the watch's lift goes
+        // whatever the container had, so the net never finds the same hold
+        // due again.
+        watch.container(holds: container.holdsItsScroll, lifted: container.liftedItem, at: now)
         watch.settled(because: "the safety net", at: now)
+        mirror()
         if let lifted {
             driver(of: lifted)?.containerSettledIt(because: "the safety net: \(alarm.line)")
         }
@@ -255,27 +327,40 @@ public final class PluckContainerModel {
     private func raise(_ alarm: PluckHoldWatch<AnyHashable>.Alarm, at now: ContinuousClock.Instant) {
         let lines = [("alarm", alarm.line)] + watch.alarmLines(for: alarm, at: now)
         watch.raised(alarm, at: now)
-        let why = switch alarm.kind {
-        case .heldWithNoPinchUnderWay: "no pinch under way"
-        case .letGoWithNothingHeard: "nothing heard from its pinch: let go"
-        case .letGoWithNoPinchOnIt: "no pinch on it: let go"
+        let title = switch alarm.kind {
+        case .heldWithNoPinchUnderWay: "Scroll held by \(alarm.title), no pinch under way"
+        case .letGoWithNothingHeard: "Scroll held by \(alarm.title), nothing heard from its pinch: let go"
+        case .letGoWithNoPinchOnIt: "Scroll held by \(alarm.title), no pinch on it: let go"
+        case .scrollLetGoWithNothingHeard: "Scroll held for the pinch on \(alarm.title), nothing heard: let go"
+        case .viewsDisagree: "The hold's views disagree"
+        case .scrollViewNeverTookIt: "The scroll view never took the pinch on \(alarm.title)"
         }
         let outcome = alarm.kind.letsGo ? "let go by the net" : "stuck"
-        let traced = recorder?.alarm("Pluck", title: "Scroll held by \(alarm.title), \(why)", lines: lines, outcome: outcome) ?? false
+        let traced = recorder?.alarm("Pluck", title: title, lines: lines, outcome: outcome) ?? false
         if !traced {
             let events = lines.dropFirst().map { "\($0.0) \($0.1)" }.joined(separator: "; ")
             pluckContainerLogger.info("Alarm: \(alarm.line, privacy: .public); \(events, privacy: .public)")
         }
     }
 
-    /// Shows the watch's status, should it have changed, the hold's start by
-    /// the wall clock taken as it began.
+    /// Reads what the scroll view has, should a probe be there.
+    private func readScrollView() {
+        guard let reading = scrollViewReader?() else { return }
+        watch.scrollViewRead(reading, at: .now)
+    }
+
+    /// Shows the watch's status, should it have changed, the scroll hold's
+    /// start and the last phase's by the wall clock taken as each came.
     private func showStatus() {
-        if watch.heldSince != heldSinceInstant {
-            heldSinceInstant = watch.heldSince
-            heldSinceDate = watch.heldSince == nil ? nil : .now
+        if watch.scrollHeldSince != heldSinceInstant {
+            heldSinceInstant = watch.scrollHeldSince
+            heldSinceDate = watch.scrollHeldSince == nil ? nil : .now
         }
-        let shown = PluckContainerStatus(watch: watch, heldSince: heldSinceDate)
+        if watch.lastPhaseAt != phaseInstant {
+            phaseInstant = watch.lastPhaseAt
+            phaseDate = watch.lastPhaseAt == nil ? nil : .now
+        }
+        let shown = PluckContainerStatus(watch: watch, heldSince: heldSinceDate, lastPhaseDate: phaseDate)
         if status != shown { status = shown }
     }
 
@@ -284,13 +369,16 @@ public final class PluckContainerModel {
         pinchedItems.values.first { $0.itemID == item }
     }
 
-    /// Mirrors the container's lifted item and scroll hold, observed.
+    /// Mirrors the container's lifted item and hold, observed, and tells the
+    /// watch, which lets the scroll go once nothing backs it.
     private func mirror() {
         if liftedItem != container.liftedItem { liftedItem = container.liftedItem }
         if holdsItsScroll != container.holdsItsScroll {
             holdsItsScroll = container.holdsItsScroll
-            pluckContainerLogger.info("The container's scroll is \(self.holdsItsScroll ? "held off under a lifted item" : "on again", privacy: .public)")
+            pluckContainerLogger.info("The container \(self.holdsItsScroll ? "holds its scroll under a lifted item" : "holds its scroll no more", privacy: .public)")
         }
+        watch.container(holds: container.holdsItsScroll, lifted: container.liftedItem, at: .now)
+        watchChanged()
     }
 
     /// Traces a scroll of the container, from its first scrolling phase to
@@ -311,20 +399,40 @@ public final class PluckContainerModel {
     }
 }
 
-/// What a pluckable container's status line shows: the item holding its
-/// scroll, if one is, and since when; the pinch under way, or the one its
-/// rules still keep; and its alarms.
+/// What a pluckable container's status line shows, each view of its hold
+/// side by side: the scroll held off as its scroll view is given it, and for
+/// which item's pinch, since when; the value `.scrollDisabled` got; the
+/// container's own hold and lifted item; the watch's lifted item; what the
+/// scroll view has, as a debug build's probe reads it; the scroll view's
+/// last phase and when; the pinch under way, or the one its rules still
+/// keep; what they disagree on; and its alarms.
 public struct PluckContainerStatus: Equatable, Sendable {
-    /// The item lifted, holding the scroll, by its title; nil while none is.
+    /// The item whose pinch the scroll is held off for, by its title; nil
+    /// while the scroll is on.
     public var heldBy: String?
-    /// When it lifted, by the wall clock.
+    /// When the scroll was held off, by the wall clock.
     public var heldSince: Date?
+    /// What the scroll view was given: held off, or on; nil until given.
+    public var scrollGiven: Bool?
+    /// Whether the container holds its scroll, and whether it has an item
+    /// lifted.
+    public var containerHolds = false
+    public var containerLifted = false
+    /// The item the watch was told is lifted, by its title.
+    public var lifted: String?
+    /// What the scroll view has, as a probe reads it, in a few words.
+    public var scrollView: String?
+    /// The scroll view's last phase, and when it came by the wall clock.
+    public var lastPhase: String?
+    public var lastPhaseDate: Date?
     /// The pinch under way, or else one its rules keep, in a few words:
     /// "item 7: press up, drag silent or ended, its item kept up past its
     /// press"; nil while there's none.
     public var pinch: String?
     /// Whether a gesture says a pinch is under way.
     public var pinchIsUnderWay = false
+    /// What its views disagree on, in words; nil while they agree.
+    public var disagreement: String?
     /// How many alarms it has raised.
     public var alarms = 0
     /// The last alarm it raised, in a line.
@@ -332,11 +440,19 @@ public struct PluckContainerStatus: Equatable, Sendable {
 
     public init() {}
 
-    init(watch: PluckHoldWatch<AnyHashable>, heldSince: Date?) {
-        heldBy = watch.heldTitle
-        self.heldSince = watch.heldTitle == nil ? nil : heldSince
+    init(watch: PluckHoldWatch<AnyHashable>, heldSince: Date?, lastPhaseDate: Date?) {
+        heldBy = watch.holdsTheScroll ? (watch.scrollHeldTitle ?? "an item") : nil
+        self.heldSince = watch.holdsTheScroll ? heldSince : nil
+        scrollGiven = watch.scrollGiven
+        containerHolds = watch.containerHolds
+        containerLifted = watch.containerLifted != nil
+        lifted = watch.heldTitle
+        scrollView = watch.scrollView?.description
+        lastPhase = watch.lastPhase?.rawValue
+        self.lastPhaseDate = lastPhaseDate
         pinch = watch.shownPinch?.description
         pinchIsUnderWay = watch.isPinchUnderWay
+        disagreement = watch.disagreement
         alarms = watch.alarms
         lastAlarm = watch.lastAlarm
     }
@@ -412,6 +528,22 @@ extension View {
     }
 }
 
+/// Holds the scroll view off as the container's watch says
+/// (`PluckContainerModel.scrollIsHeldOff`), and tells the model the value it
+/// gave, read exactly where it's given, for its status line and its alarm.
+private struct PluckScrollHold: ViewModifier {
+    let model: PluckContainerModel
+
+    func body(content: Content) -> some View {
+        let heldOff = model.scrollIsHeldOff
+        content
+            .scrollDisabled(heldOff)
+            .onChange(of: heldOff, initial: true) { _, heldOff in
+                model.scrollGiven(heldOff: heldOff)
+            }
+    }
+}
+
 /// The container's side of a pluck, on its scroll view.
 private struct PluckContainerModifier: ViewModifier {
     let model: PluckContainerModel
@@ -431,9 +563,10 @@ private struct PluckContainerModifier: ViewModifier {
             } action: { _, offset in
                 model.scrollOffsetChanged(to: offset)
             }
-            // A lifted item's pinch moves the item, not the scroll, until it
-            // settles, if the tuning stops the scroll.
-            .scrollDisabled(model.holdsItsScroll)
+            // A lifted item's pinch moves the item, not the scroll, held off
+            // until that pinch lets go, as the container's watch says; what
+            // it's given is told back, read where it's given.
+            .modifier(PluckScrollHold(model: model))
             .onChange(of: tuning, initial: true) { _, tuning in
                 model.tuning = tuning
             }
