@@ -1,9 +1,6 @@
 # GestureKit
 
-GestureKit is a set of content-agnostic gestures for Apple Vision Pro:
-carrying things by a handle, turning them to face you, placing panels below
-your gaze, pulling items out of a scrolling grid into the room, and telling
-one pinch on a surface as a tap, a drag, a pickup, or a hold. Each gesture's
+GestureKit is a set of content-agnostic gestures for Apple Vision Pro. Each gesture's
 rules live in `GestureCore`, plain Swift tested on the Mac, and its visionOS
 adapters, the components, systems, and view modifiers that carry those rules
 out on any RealityKit entity or SwiftUI view, live in `GestureKit`. Every
