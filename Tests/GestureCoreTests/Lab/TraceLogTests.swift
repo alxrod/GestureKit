@@ -92,9 +92,94 @@ struct TraceLogTests {
         #expect(log.interactions[0].lasted == .zero)
     }
 
-    @Test("A log keeps at least one interaction")
+    @Test("A log keeps at least one interaction, of at least one line")
     func leastCapacity() {
         #expect(TraceLog(capacity: 0).capacity == 1)
         #expect(TraceLog().capacity == TraceLog.defaultCapacity)
+        #expect(TraceLog(lineLimit: 0).lineLimit == 1)
+        #expect(TraceLog().lineLimit == TraceLog.defaultLineLimit)
+        #expect(TraceLog().foldSpan == .seconds(1))
+    }
+
+    @Test("A run of one name folds into one line: how many, the first and the latest, and the farthest")
+    func foldsARun() throws {
+        var log = TraceLog()
+        let id = log.begin("Carry", title: "Pinch on a handle", at: at(0), date: date)
+        log.record("touch", in: id, at: at(0))
+        log.record("carry", detail: "hand 0.10 m", measure: TraceMeasure(0.10, "m"), in: id, at: at(200))
+        log.record("carry", detail: "hand 0.30 m", measure: TraceMeasure(0.30, "m"), in: id, at: at(500))
+        log.record("carry", detail: "hand 0.20 m", measure: TraceMeasure(0.20, "m"), in: id, at: at(900))
+        log.record("release", detail: "let go", in: id, at: at(1_000))
+        let events = log.interactions[0].events
+        #expect(events.map(\.name) == ["touch", "carry", "release"])
+        let run = events[1]
+        #expect(run.count == 3)
+        #expect(run.isFolded)
+        #expect(run.offset == .milliseconds(200))
+        #expect(run.latestOffset == .milliseconds(900))
+        #expect(run.detail == "hand 0.10 m")
+        #expect(run.latestDetail == "hand 0.20 m")
+        #expect(run.farthest == TraceMeasure(0.30, "m"))
+        #expect(run.text == "carry ×3 +0.20–0.90 s (farthest 0.30 m; hand 0.10 m … hand 0.20 m)")
+        #expect(log.interactions[0].eventsRecorded == 5)
+        log.finish(id, outcome: "carried", at: at(1_000))
+        #expect(log.interactions[0].summary == """
+            #1 Carry · Pinch on a handle → carried, 1.00 s: touch +0.00 s; \
+            carry ×3 +0.20–0.90 s (farthest 0.30 m; hand 0.10 m … hand 0.20 m); release +1.00 s (let go)
+            """)
+    }
+
+    @Test("A change of name always begins a line, and a name after a pause begins another")
+    func stagesAndPauses() {
+        var log = TraceLog()
+        let id = log.begin("Pluck", title: "Pinch on item 4", at: at(0), date: date)
+        log.record("drag", detail: "a", in: id, at: at(0))
+        log.record("drag", detail: "b", in: id, at: at(100))
+        log.record("lift", in: id, at: at(150))
+        log.record("drag", detail: "c", in: id, at: at(200))
+        log.record("drag", detail: "d", in: id, at: at(1_200))
+        log.record("drag", detail: "e", in: id, at: at(2_300))
+        let events = log.interactions[0].events
+        #expect(events.map(\.name) == ["drag", "lift", "drag", "drag"])
+        #expect(events.map(\.count) == [2, 1, 2, 1])
+        #expect(events[2].latestDetail == "d")
+        #expect(events[3].detail == "e")
+        #expect(events[3].offset == .milliseconds(2_300))
+    }
+
+    @Test("A full interaction folds a name it has had into that name's latest line, and keeps a new one")
+    func lineLimit() {
+        var log = TraceLog(lineLimit: 3)
+        let id = log.begin("Pluck", title: "Pinch", at: at(0), date: date)
+        log.record("drag", detail: "1", in: id, at: at(0))
+        log.record("scroll phase", detail: "interacting", in: id, at: at(10))
+        log.record("drag", detail: "2", in: id, at: at(20))
+        // Full: these fold into the latest line of their names.
+        log.record("scroll phase", detail: "idle", in: id, at: at(30))
+        log.record("drag", detail: "3", in: id, at: at(40))
+        log.record("drag", detail: "4", in: id, at: at(5_000))
+        // A name it hasn't had is a stage, kept past the limit.
+        log.record("lift", in: id, at: at(5_100))
+        let events = log.interactions[0].events
+        #expect(events.map(\.name) == ["drag", "scroll phase", "drag", "lift"])
+        #expect(events.map(\.count) == [1, 2, 3, 1])
+        #expect(events[1].latestDetail == "idle")
+        #expect(events[2].latestDetail == "4")
+        #expect(events[2].latestOffset == .milliseconds(5_000))
+    }
+
+    @Test("A run's farthest is in its unit; a measure in another unit takes its place")
+    func farthestUnits() {
+        var log = TraceLog()
+        let id = log.begin("A", title: "a", at: at(0), date: date)
+        log.record("move", measure: TraceMeasure(12, "pt", decimals: 1), in: id, at: at(0))
+        log.record("move", measure: TraceMeasure(3, "pt", decimals: 1), in: id, at: at(10))
+        #expect(log.interactions[0].events[0].farthest?.text == "12.0 pt")
+        log.record("move", measure: TraceMeasure(0.02, "m"), in: id, at: at(20))
+        log.record("move", in: id, at: at(30))
+        let run = log.interactions[0].events[0]
+        #expect(run.farthest == TraceMeasure(0.02, "m"))
+        #expect(run.count == 4)
+        #expect(run.text == "move ×4 +0.00–0.03 s (farthest 0.02 m)")
     }
 }

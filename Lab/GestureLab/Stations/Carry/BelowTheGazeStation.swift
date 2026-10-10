@@ -77,7 +77,7 @@ final class BelowTheGazeStation: LabStation {
         placing?.cancel()
         placing = Task {
             let stood = await GazePanel.standBelowTheGaze(
-                panel, tuning: tuning, recorder: quietly ? nil : trace, because: reason
+                panel, tuning: tuning, recorder: trace, quietly: quietly, because: reason
             )
             guard let stood else { return }
             panel.isEnabled = true

@@ -63,9 +63,12 @@ the package by its URL.
 
 `Lab/` holds GestureLab, a visionOS app with a station for each gesture: a
 window listing them, and an immersive space where the chosen one stands.
-Beside each, a live trace shows every interaction as a timeline, and a
-tuning panel changes its numbers as you try it; Copy tuning puts them on the
-pasteboard as Swift, ready to become the defaults.
+Beside each, a live trace shows every interaction as a timeline, a drag's
+run of words folded into one line, and a tuning panel changes its numbers as
+you try it; Copy tuning puts them on the pasteboard as Swift, ready to become
+the defaults. A switch in the window's toolbar turns tracing off for the
+whole lab, and one in each trace for its station, to feel the gestures with
+no trace at all.
 
 To run it:
 

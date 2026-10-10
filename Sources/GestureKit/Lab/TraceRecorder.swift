@@ -11,7 +11,9 @@ private let logger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category
 /// continuous clock, each finished one's summary logged at info level.
 ///
 /// Every adapter takes one optionally, so an app that doesn't trace passes
-/// nothing and pays nothing:
+/// nothing and pays nothing; and a recorder that isn't recording
+/// (`isRecording`) gives no trace, so an adapter handed one pays nothing
+/// either:
 ///
 ///     var trace: InteractionTrace?
 ///     // as a pinch touches:
@@ -19,6 +21,11 @@ private let logger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category
 ///     trace?.event("lift", "held still 0.50 s")
 ///     // as it ends:
 ///     trace?.finish("pull")
+///
+/// Its log folds a run of events of one name into one line, as a drag's
+/// words come, and keeps a line for each stage (`TraceLog`), so a pinch's
+/// trace, and the summary the console gets, stay a few lines long however
+/// long the hand moves.
 ///
 /// What a trace shows (`shownLog`) follows the log paced (`TracePacing`):
 /// at once after a quiet spell, then at most ten times a second. With
@@ -31,6 +38,18 @@ public final class TraceRecorder {
     /// stand.
     public private(set) var log: TraceLog {
         didSet { logChanged() }
+    }
+
+    /// Whether it writes anything down. Off, `begin` gives no trace, so an
+    /// adapter handed it builds no title or detail, times nothing, and logs
+    /// no summary, as though it had no recorder; and it forgets what it
+    /// kept, which a trace shows at once. An interaction begun before it
+    /// went off writes nothing more.
+    public var isRecording = true {
+        didSet {
+            guard isRecording != oldValue, !isRecording else { return }
+            clear()
+        }
     }
 
     /// The log as a trace shows it: `log`, at most `TracePacing`'s interval
@@ -48,11 +67,13 @@ public final class TraceRecorder {
     /// do, so it logs them publicly.
     @ObservationIgnored public let logsSummariesPublicly: Bool
 
-    /// A recorder keeping the last `capacity` interactions.
-    public init(capacity: Int = TraceLog.defaultCapacity, logsSummariesPublicly: Bool = false) {
+    /// A recorder keeping the last `capacity` interactions, recording
+    /// unless `isRecording` says otherwise.
+    public init(capacity: Int = TraceLog.defaultCapacity, logsSummariesPublicly: Bool = false, isRecording: Bool = true) {
         log = TraceLog(capacity: capacity)
         shownLog = TraceLog(capacity: capacity)
         self.logsSummariesPublicly = logsSummariesPublicly
+        self.isRecording = isRecording
     }
 
     /// The interactions it keeps, newest first.
@@ -62,9 +83,11 @@ public final class TraceRecorder {
     public var shownInteractions: [TracedInteraction] { shownLog.interactions }
 
     /// Begins an interaction with `gesture`, on what `title` says, now, and
-    /// gives the trace its events and outcome are written through.
-    public func begin(_ gesture: String, title: String) -> InteractionTrace {
-        let id = log.begin(gesture, title: title, at: .now, date: .now)
+    /// gives the trace its events and outcome are written through; nil,
+    /// making no title, while it isn't recording.
+    public func begin(_ gesture: String, title: @autoclosure () -> String) -> InteractionTrace? {
+        guard isRecording else { return nil }
+        let id = log.begin(gesture, title: title(), at: .now, date: .now)
         return InteractionTrace(id: id, recorder: self)
     }
 
@@ -99,12 +122,13 @@ public final class TraceRecorder {
         shownLog = log
     }
 
-    fileprivate func record(_ name: String, detail: String, in id: TracedInteraction.ID) {
-        log.record(name, detail: detail, in: id, at: .now)
+    fileprivate func record(_ name: String, detail: String, measure: TraceMeasure?, in id: TracedInteraction.ID) {
+        guard isRecording else { return }
+        log.record(name, detail: detail, measure: measure, in: id, at: .now)
     }
 
     fileprivate func finish(_ id: TracedInteraction.ID, outcome: String) {
-        guard let finished = log.finish(id, outcome: outcome, at: .now) else { return }
+        guard isRecording, let finished = log.finish(id, outcome: outcome, at: .now) else { return }
         if logsSummariesPublicly {
             logger.info("\(finished.summary, privacy: .public)")
         } else {
@@ -126,10 +150,18 @@ public struct InteractionTrace {
         self.recorder = recorder
     }
 
-    /// Records that `name` happened now, with what `detail` says of it.
-    public func event(_ name: String, _ detail: String = "") {
-        recorder.record(name, detail: detail, in: id)
+    /// Records that `name` happened now, with what `detail` says of it and,
+    /// for something that reaches, as a hand carrying, how far it reached,
+    /// so a run of them keeps the farthest. A run of one name, one after
+    /// another, folds into one line (`TraceLog`).
+    public func event(_ name: String, _ detail: String = "", measure: TraceMeasure? = nil) {
+        recorder.record(name, detail: detail, measure: measure, in: id)
     }
+
+    /// Whether what it writes is still kept: false once its recorder has
+    /// stopped recording, so an adapter can skip working out what it would
+    /// write.
+    public var isRecording: Bool { recorder.isRecording }
 
     /// Gives the interaction its outcome now, such as "tap" or "pull", and
     /// logs its summary; a second outcome changes nothing.

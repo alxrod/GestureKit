@@ -231,7 +231,7 @@ final class PressStation: LabStation {
         }
         coastRun = run
         let traced = trace.begin("Coast", title: "Flick of the playhead")
-        traced.event("set out", String(format: "from %.3f m at %.2f m/s, to rest at %.3f m in %.2f s", run.start, velocity, run.end, run.coast.duration))
+        traced?.event("set out", String(format: "from %.3f m at %.2f m/s, to rest at %.3f m in %.2f s", run.start, velocity, run.end, run.coast.duration))
         coastTrace = traced
         lastEvent = String(format: "Coasting from %.2f m/s", velocity)
         Task { @MainActor [weak self] in

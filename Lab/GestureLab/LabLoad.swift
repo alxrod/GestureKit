@@ -1,6 +1,7 @@
 #if DEBUG
-import GestureKit
+@_spi(PinchStandIn) import GestureKit
 import os
+import RealityKit
 import SwiftUI
 
 private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", category: "LabLoad")
@@ -24,6 +25,14 @@ private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", c
 ///   as a drag along it scrolls it.
 /// - `coast`: the press's playhead flicked every 2 s, coasting in between.
 /// - `switch`: the next station chosen every 4 s, as the window's list does.
+/// - `surface`: a stand-in pinch (`PinchStandIn`) dragged along the press's
+///   surface through `.surfacePress`, 90 words a second for 2 s, then let
+///   go, again and again, as a hand scrolling it would.
+/// - `tab`: a stand-in pinch held on the press's tab through `.holdWatch`,
+///   wavering within its stillness, 90 words a second for 2 s, then let go.
+/// - `handle`: a stand-in pinch carrying the middle panel of carry and face
+///   by its handle through `.grabHandleCarry`, round a circle 20 cm across,
+///   90 words a second for 2 s, then let go.
 enum LabLoad: String, CaseIterable {
     case trace
     case tuning
@@ -32,6 +41,9 @@ enum LabLoad: String, CaseIterable {
     case drag
     case coast
     case `switch`
+    case surface
+    case tab
+    case handle
 
     /// The loads `-labLoad` asked for at launch.
     static let asked: Set<LabLoad> = {
@@ -44,6 +56,9 @@ enum LabLoad: String, CaseIterable {
     @MainActor static func start(on lab: LabModel) {
         guard !asked.isEmpty else { return }
         let station = lab.chosen
+        if !asked.isDisjoint(with: [.surface, .tab, .handle]) {
+            PinchStandIn.shared.isListening = true
+        }
         labLoadLogger.info("Lab load \(asked.map(\.rawValue).sorted().joined(separator: ","), privacy: .public) on the station \(station.id, privacy: .public)")
         for load in asked where load != .scroll {
             Task { @MainActor in
@@ -55,6 +70,9 @@ enum LabLoad: String, CaseIterable {
                 case .drag: await dragLoad(on: station)
                 case .coast: await coastLoad(on: station)
                 case .switch: await switchLoad(on: lab)
+                case .surface: await standInLoad(.surfacePress) { time in SIMD3(300 * time, 0, 0) }
+                case .tab: await standInLoad(.holdWatch) { time in SIMD3(4 * sin(time * 9), 3 * cos(time * 7), 0) }
+                case .handle: await handleLoad(on: station)
                 case .scroll: break
                 }
             }
@@ -65,17 +83,17 @@ enum LabLoad: String, CaseIterable {
         let detail = "(3.0 across, -12.0 down, 30.0 toward you) pt: still within its hold's stillness"
         for number in 1...30 {
             let trace = recorder.begin("Load", title: "Earlier pinch \(number)")
-            for _ in 0..<15 { trace.event("drag", detail) }
-            trace.finish("tap")
+            for _ in 0..<15 { trace?.event("drag", detail) }
+            trace?.finish("tap")
         }
         var trace = recorder.begin("Load", title: "Pinch under way")
         var written = 0
         while !Task.isCancelled {
             try? await Task.sleep(for: .milliseconds(50))
-            trace.event("drag", detail)
+            trace?.event("drag", detail, measure: TraceMeasure(Double(written % 15) * 2, "pt", decimals: 1))
             written += 1
             if written % 15 == 0 {
-                trace.finish("pull")
+                trace?.finish("pull")
                 trace = recorder.begin("Load", title: "Pinch under way")
             }
         }
@@ -127,6 +145,48 @@ enum LabLoad: String, CaseIterable {
             station.handle(.settled, item: item)
             if station.cards.count >= 4 { station.clearCards() }
             item = item % station.itemCount + 1
+        }
+    }
+
+    /// Stand-in pinches on `adapter`, each moved as `moved` says at each of
+    /// its seconds, 90 words a second for 2 s, then let go, a fifth of a
+    /// second apart.
+    @MainActor private static func standInLoad(
+        _ adapter: PinchStandIn.Adapter,
+        handle: Entity? = nil,
+        meters: (Double) -> SIMD3<Float> = { _ in .zero },
+        moved: (Double) -> SIMD3<Double>
+    ) async {
+        var reported = false
+        while !Task.isCancelled {
+            for frame in 1...180 {
+                try? await Task.sleep(for: .milliseconds(11))
+                let time = Double(frame) / 90
+                let took = PinchStandIn.shared.step(adapter, .moved(points: moved(time), meters: meters(time), handle: handle))
+                if !reported {
+                    reported = true
+                    labLoadLogger.info("Lab load: \(took) adapters take the stand-in's steps as \(String(describing: adapter), privacy: .public)")
+                }
+            }
+            PinchStandIn.shared.step(adapter, .released)
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
+    @MainActor private static func handleLoad(on station: any LabStation) async {
+        guard let station = station as? CarryAndFaceStation, let handle = station.loadHandle() else {
+            labLoadLogger.error("Lab load handle: choose the carry and face station")
+            return
+        }
+        // Round a circle 20 cm across, from where it touched, a meter being
+        // 1,360 of the handle's points.
+        let circle = { (time: Double) -> SIMD3<Float> in
+            let angle = Float(time) * .pi
+            return SIMD3(cos(angle) * 0.1 - 0.1, sin(angle) * 0.1, 0)
+        }
+        await standInLoad(.grabHandleCarry, handle: handle, meters: circle) { time in
+            let meters = circle(time)
+            return SIMD3(Double(meters.x), -Double(meters.y), Double(meters.z)) * 1360
         }
     }
 

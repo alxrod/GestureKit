@@ -29,7 +29,7 @@ final class CarryAndFaceStation: LabStation {
     @ObservationIgnored private var panels: [String: Entity] = [:]
 
     /// Each panel's handle, by the panel's name.
-    @ObservationIgnored private var handles: [String: PanelHandleRig] = [:]
+    @ObservationIgnored fileprivate var handles: [String: PanelHandleRig] = [:]
 
     /// How tall each panel lays out, in points, by its name, which may be
     /// said before its handle is made.
@@ -118,6 +118,16 @@ final class CarryAndFaceStation: LabStation {
 
     static func pillID(of name: String) -> String { "\(name)-pill" }
 }
+
+#if DEBUG
+extension CarryAndFaceStation {
+    /// The grab handle of the middle panel, which the lab load's stand-in
+    /// pinch carries (`LabLoad`).
+    func loadHandle() -> Entity? {
+        handles["panel-b"]?.handle
+    }
+}
+#endif
 
 /// The carry and face station's part of the window: how to try it, where
 /// the last panel stood, and its switches.
