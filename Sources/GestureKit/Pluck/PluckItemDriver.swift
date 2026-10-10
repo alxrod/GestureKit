@@ -401,7 +401,7 @@ final class PluckItemDriver {
             parts.append("its scroll offset unread")
         }
         if press.dragTranslation == nil {
-            parts.append(String(format: "the drag silent, the pinch within its %.0f pt start of the touch", tuning.dragStartDistance))
+            parts.append(pluckItemSilentDrag(tuning))
         } else {
             parts.append(String(
                 format: "the pinch moved %.1f pt along the scroll, %.0f allowed, and %.1f any way, %.0f allowed",
@@ -594,7 +594,9 @@ final class PluckItemDriver {
         case .arming: (point, moment) = (press.armingPoint, "armed")
         }
         guard let point else {
-            return needs + String(format: " from the touch: the drag silent as it %@, the pinch within its %.0f pt start of it", moment, tuning.dragStartDistance)
+            return needs + " from the touch: the drag silent as it \(moment), " + (tuning.liftedTracking.letsDragInAtTheLift
+                ? "its first word after the lift to stand for where the pinch was"
+                : pluckItemSilentDrag(tuning))
         }
         return needs + " from \(pluckItemVector(point)), where it \(moment)"
     }
@@ -739,7 +741,9 @@ final class PluckItemDriver {
         firstDragAfterLift = (.now, distance)
         let heldBackStart = (pinches.press?.tuning ?? setting.tuning).heldBackDragStart
         let cameDown = distance < heldBackStart
-        if tracking.letsDragInAtTheLift, cameDown { dragOrigin = translation }
+        // Only where the drag was silent until the lift: one that spoke
+        // before it gave the pull where the pinch stood as it lifted.
+        if tracking.letsDragInAtTheLift, cameDown, pinches.press?.liftPoint == nil { dragOrigin = translation }
         let what = switch tracking.heldBack {
         case .byItsStart(lowered: true): cameDown
             ? "its start came down: it hears the pinch from here"
@@ -867,6 +871,14 @@ final class PluckItemDriver {
 private func pluckItemSeconds(_ duration: Duration) -> String {
     let (seconds, attoseconds) = duration.components
     return String(format: "%.2f", Double(seconds) + Double(attoseconds) / 1e18)
+}
+
+/// Why the drag was silent, in words, as the tuning holds it: within its
+/// start of the touch, or left out by its mask.
+private func pluckItemSilentDrag(_ tuning: PluckTuning) -> String {
+    let made = tuning.liftedTracking.drag(attached: false, tuning: tuning)
+    guard made.isLetIn else { return "the drag silent, left out by its mask until the lift" }
+    return String(format: "the drag silent, the pinch within its %.0f pt start of the touch", made.startDistance)
 }
 
 /// A drag's translation in the item's points: "(3.0 across, -12.0 down, 30.0 toward you) pt".
