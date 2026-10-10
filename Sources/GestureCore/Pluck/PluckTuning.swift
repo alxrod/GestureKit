@@ -355,6 +355,46 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// precedence over.
     public var pullDragIsSimultaneous: Bool
 
+    /// For the adapter: whether a lifted pinch is followed by the pinching
+    /// hand, through hand tracking, from the lift (`PluckLiftedTracking`):
+    /// on by default, ahead of `attachesDragOnceLifted`.
+    ///
+    /// No gesture on the item hears the pinch before the lift, so none
+    /// competes with the grid's scroll view for it, as the item's drag did
+    /// until October 10, eating scrolls; and hand tracking, not being a
+    /// gesture, needs nothing let in mid-pinch, which only the headset can
+    /// say a gesture takes. The hand is the one whose pinch closed nearest
+    /// the item's press, followed by its thumb and index fingertips'
+    /// midpoint, and let go as they open (`HandPinch`). Where it can't be
+    /// followed, as in the simulator, without hand tracking's permission,
+    /// with the space closed, or with no hand pinched, the drag let in at
+    /// the lift follows the pinch, as `attachesDragOnceLifted`.
+    public var tracksLiftedPinchByHand: Bool
+
+    /// For the adapter: whether the item's drag is let in only once the
+    /// item has lifted, should `tracksLiftedPinchByHand` be off: on by
+    /// default. Off with it, the drag is attached from the touch, as until
+    /// October 10, hearing the pinch from `dragStartDistance` and telling
+    /// the hold how the hand moved before it, but taking scrolls from the
+    /// scroll view.
+    ///
+    /// Before the lift, with no drag, the hold is given up by the scroll
+    /// view alone: its phase, its offset moving a point, or the button's
+    /// press it cancels as it takes the pinch. Its pan starts at about the
+    /// hold's 10 pt along the scroll, so a pinch moved along the scroll is
+    /// still a scroll; one moved across or toward the viewer before the
+    /// quarter second, which the drag's 40 pt any way made a scroll, now
+    /// lifts its item, and its pull counts from the lift.
+    public var attachesDragOnceLifted: Bool
+
+    /// For the adapter: how the drag is held back until the lift: off, by
+    /// its gesture mask, let in at the lift, as by default; on, by a start
+    /// no pinch reaches before the lift, brought down at it
+    /// (`PluckLiftedTracking.HeldBack`). Whichever lets a drag hear the pinch
+    /// already under way, the pinch's trace says, its drag's words after the
+    /// lift or their absence.
+    public var holdsDragBackByItsStart: Bool
+
     /// For the adapter: how far in front of the drag's location what an item
     /// pulls out spawns, in the item's points, so it comes out in front of
     /// the window rather than inside it: 100 pt. The carry of what spawned
@@ -398,6 +438,9 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         releaseTapGrace: Double = 1,
         holdsFromTheDrag: Bool = false,
         pullDragIsSimultaneous: Bool = true,
+        tracksLiftedPinchByHand: Bool = true,
+        attachesDragOnceLifted: Bool = true,
+        holdsDragBackByItsStart: Bool = false,
         pushTowardViewer: Double = 100,
         liftScale: Double = 1.08,
         liftDepth: Double = 36
@@ -429,6 +472,9 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.releaseTapGrace = releaseTapGrace
         self.holdsFromTheDrag = holdsFromTheDrag
         self.pullDragIsSimultaneous = pullDragIsSimultaneous
+        self.tracksLiftedPinchByHand = tracksLiftedPinchByHand
+        self.attachesDragOnceLifted = attachesDragOnceLifted
+        self.holdsDragBackByItsStart = holdsDragBackByItsStart
         self.pushTowardViewer = pushTowardViewer
         self.liftScale = liftScale
         self.liftDepth = liftDepth
@@ -593,6 +639,9 @@ extension PluckTuning: Tunable {
         .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),
         .toggle(\.holdsFromTheDrag, key: "holdsFromTheDrag", title: "Hold counts from the drag, not a button"),
         .toggle(\.pullDragIsSimultaneous, key: "pullDragIsSimultaneous", title: "Pull drag is simultaneous"),
+        .toggle(\.tracksLiftedPinchByHand, key: "tracksLiftedPinchByHand", title: "A lifted pinch follows the hand, by hand tracking"),
+        .toggle(\.attachesDragOnceLifted, key: "attachesDragOnceLifted", title: "Else the drag, let in once lifted, not from the touch"),
+        .toggle(\.holdsDragBackByItsStart, key: "holdsDragBackByItsStart", title: "The drag held back by an unreachable start, not its mask"),
         .number(\.pushTowardViewer, key: "pushTowardViewer", title: "Pulled thing's push toward you", unit: "pt", range: 0...300, step: 5),
         .number(\.liftScale, key: "liftScale", title: "Lift scale", range: 1...1.3, step: 0.01),
         .number(\.liftDepth, key: "liftDepth", title: "Lift depth", unit: "pt", range: 0...120, step: 2),
