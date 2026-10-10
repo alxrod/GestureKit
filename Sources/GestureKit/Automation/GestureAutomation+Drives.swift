@@ -41,8 +41,8 @@ extension GestureAutomation {
             help: "Scrolls a pluckable grid (the only one) by pt (400; more is further down), or to top, end, an offset, or an item's title or id, over time s (0.5); with on, the pinch starts on that item. Outcome: scrolled."
         ) { automation, arguments in try await automation.scroll(arguments) },
         "carry": Drive(
-            keys: ["target", "handle", "by", "to", "time"],
-            help: "Carries a grab handle by m ([0.1, 0, 0]), or its carried thing's middle to a point m in its parent's frame, over time s (0.6), and lets go. Outcome: carried, nothing, under nothing, or refused."
+            keys: ["target", "handle", "by", "to", "time", "ending"],
+            help: "Carries a grab handle by m ([0.1, 0, 0]), or its carried thing's middle to a point m in its parent's frame, over time s (0.6), and lets go, or, with ending cancelled, has its gesture cancelled there instead. Outcome: carried, nothing, under nothing, or refused; its result's ending says how the carry ended, released or cancelled."
         ) { automation, arguments in try await automation.carry(arguments) },
         "place": Drive(
             keys: ["target", "panel", "head"],
@@ -313,6 +313,10 @@ extension GestureAutomation {
             by = SIMD3(0.1, 0, 0)
         }
         let time = try arguments.number("time") ?? 0.6
+        let asked = try arguments.string("ending") ?? CarryEnding.released.rawValue
+        guard let ending = CarryEnding(rawValue: asked), ending != .viewWent else {
+            throw AutomationError("carry ends released or cancelled, not “\(asked)”; its view going is the app's to drive.")
+        }
         let from = carried?.position
         let start = ContinuousClock.now
         for step in AutomationPath.steps(from: .zero, to: by, over: time) {
@@ -321,7 +325,7 @@ extension GestureAutomation {
             if took == 0 { throw AutomationError("No grab handle carry is on screen to take the pinch on “\(name)”.") }
         }
         try? await Task.sleep(for: .milliseconds(20))
-        PinchStandIn.shared.step(.grabHandleCarry, .released)
+        PinchStandIn.shared.step(.grabHandleCarry, ending == .cancelled ? .cancelled : .released)
         await untilIdle(kind: .grabHandleCarry, atMost: 1)
         let names = log.names(from: "carry")
         guard names.contains("touch") else {
@@ -337,6 +341,9 @@ extension GestureAutomation {
             result["asked"] = .vector(SIMD3<Double>(from) + by)
         }
         if let ended = log.lastDetail(of: "end", from: "carry") { result["middle"] = ended["middle"] ?? .null }
+        if let ended = log.lastDetail(of: "end", from: "carry") ?? log.lastDetail(of: "release", from: "carry") {
+            result["ending"] = ended["ending"] ?? .null
+        }
         if let carried {
             result["carried"] = .string(carried.name)
             result["stood"] = .vector(carried.position)

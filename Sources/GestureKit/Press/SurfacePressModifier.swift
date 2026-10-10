@@ -598,6 +598,8 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
             pressChanged(SurfacePressWord(standingInFor: points, touchedAt: touch))
         case .released:
             pressEnded(pinch.press == nil ? nil : SurfacePressWord(standingInFor: .zero, touchedAt: nil))
+        case .cancelled:
+            pressCancelled(because: "its gesture was cancelled")
         }
     }
 

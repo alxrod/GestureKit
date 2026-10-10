@@ -6,8 +6,9 @@ import SwiftUI
 /// A hand's stand-in, in a debug build, for measuring and driving
 /// GestureKit's adapters in the simulator, which can't pinch: while it
 /// listens, each adapter on screen takes its steps as it takes its own
-/// gesture's words, each move as a drag's change and each release as its
-/// end, so a load can drive a stream of drag words through `.surfacePress`,
+/// gesture's words, each move as a drag's change, each release as its end,
+/// and each cancel as its gesture's reset with no end, so a load can drive a
+/// stream of drag words through `.surfacePress`,
 /// `.holdWatch`, or `.grabHandleCarry` as a hand would, and the cost of the
 /// adapter's own work be read; and GestureKit's automation drives each
 /// gesture through it (`GestureAutomation`).
@@ -92,6 +93,10 @@ public final class PinchStandIn {
         case moved(points: SIMD3<Double>, meters: SIMD3<Float> = .zero, handle: Entity? = nil, touch: SIMD2<Double>? = nil)
         /// The pinch was let go.
         case released
+        /// The pinch's gesture was cancelled, its state reset with no end,
+        /// as when the system takes the pinch away: each adapter ends the
+        /// pinch as its gesture's cancel would.
+        case cancelled
     }
 
     /// An adapter listening: its kind and what its view last made of it.
