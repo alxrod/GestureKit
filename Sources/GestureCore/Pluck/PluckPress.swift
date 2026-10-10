@@ -10,14 +10,17 @@
 /// nothing until the pinch has moved `PluckTuning.dragStartDistance` from
 /// where it touched, then says where it is at each move.
 ///
-/// - **A scroll first is a scroll.** A pinch whose container scrolled
-///   during it, as its scroll view says (`StayDown.containerScrolled`), is
-///   the container's scroll, and lifts and pulls nothing for the rest of
-///   the pinch, however it moves after. So is one the drag reports moving
-///   past the hold's stillness before its hold, 40 pt by default
-///   (`StayDown.movedFirst`), so a quick pinch yanked toward the viewer
-///   pulls nothing. The drag's first word alone isn't such a move, as a
-///   hand that has just pinched settles about 15 pt, the drag's start.
+/// - **A pinch is a scroll unless it's a hold.** One whose container
+///   scrolled during it, as its scroll view says, or whose scroll offset
+///   moved from where it stood at the touch (`scrollOffsetMoved(_:)`,
+///   `StayDown.containerScrolled`), is the container's scroll, and lifts and
+///   pulls nothing for the rest of the pinch, however it moves after. So is
+///   one the drag reports moving along the scroll past the hold's stillness
+///   along it, 10 pt by default, or any way past its stillness, 40 pt, before
+///   its hold (`StayDown.movedFirst`), so a slow scroll its scroll view
+///   hasn't taken yet, or a quick pinch yanked toward the viewer, lifts
+///   nothing. The drag's first word alone isn't such a move, as a hand that
+///   has just pinched settles about 15 pt, the drag's start, mostly across.
 /// - **A hold lifts.** Held `holdDuration`, a quarter second by default,
 ///   its container not having scrolled, the item lifts (`Action.lift`), and,
 ///   as the tuning says, its container's scroll stops under it until it
@@ -25,12 +28,16 @@
 /// - **Lifted, it's held.** Each move of the hand draws the item a little
 ///   along with it, from where it stood as it lifted, on its tether
 ///   (`stretch`, `follow`, `PluckTether`), and says how far the hand has
-///   gone toward breaking it free.
+///   gone toward breaking it free. A move mostly along the scroll, by
+///   default, gives the pinch back to it: the item settles, and the pinch
+///   is a scroll (`PluckTuning.givesLiftBackToScroll`,
+///   `StayDown.givenBackToTheScroll`), so an item can't be pulled out
+///   mostly along the scroll.
 /// - **The pull arms** `pullArmDelay` after the lift (`armPull()`), the
 ///   least time the item shows lifted.
 /// - **It breaks free** once armed, with the first move the pull rule
-///   takes, by default 2.5 cm any way from where the pinch stood as its
-///   item lifted (`liftPoint`), so a hand that drifted during the hold
+///   takes, by default 2.5 cm any other way from where the pinch stood as
+///   its item lifted (`liftPoint`), so a hand that drifted during the hold
 ///   doesn't break it free the instant it arms, and one that came out as
 ///   the item lifted catches up as the pull arms; or, as the tuning says,
 ///   from where it stood as the pull armed (`armingPoint`), or from where it
@@ -55,13 +62,18 @@
 public struct PluckPress: Equatable, Sendable {
     /// Why a pinch's item stays down, lifting and pulling nothing.
     public enum StayDown: String, Equatable, Sendable, Codable {
-        /// The pull's drag said the pinch moved past the hold's stillness
-        /// before its hold came: a yank, or a scroll the container's scroll
-        /// view hasn't said it makes.
+        /// The pull's drag said the pinch moved past the hold's stillness,
+        /// any way or along the container's scroll, before its hold came: a
+        /// yank, or a scroll the container's scroll view hasn't said it
+        /// makes.
         case movedFirst
-        /// Its container scrolled during the pinch, as one that caught it
-        /// coasting.
+        /// Its container scrolled during the pinch, as its scroll view or
+        /// its scroll offset said, as one that caught it coasting.
         case containerScrolled
+        /// Its item was lifted, and its pinch, moving mostly along the
+        /// container's scroll, was given back to the scroll, as the tuning
+        /// says (`PluckTuning.givesLiftBackToScroll`).
+        case givenBackToTheScroll
     }
 
     /// What the item does as the pinch is told.
@@ -92,6 +104,9 @@ public struct PluckPress: Equatable, Sendable {
 
     /// The tuning this pinch is judged by, the one it began with.
     public let tuning: PluckTuning
+    /// The axes its container scrolls along, as the container said as it
+    /// began.
+    public let scrollAxes: PluckScrollAxes
 
     /// Whether its hold has lifted its item, which hasn't settled yet.
     public private(set) var isHeld = false
@@ -160,8 +175,9 @@ public struct PluckPress: Equatable, Sendable {
         stretch?.follow ?? .zero
     }
 
-    public init(tuning: PluckTuning = PluckTuning()) {
+    public init(tuning: PluckTuning = PluckTuning(), scrollAxes: PluckScrollAxes = .vertical) {
         self.tuning = tuning
+        self.scrollAxes = scrollAxes
     }
 
     /// The hold came, the pinch held `holdDuration`: the item lifts, unless
@@ -228,14 +244,19 @@ public struct PluckPress: Equatable, Sendable {
             return [.carrySpawned]
         }
         if !liftedByHold, stayedDown == nil {
-            guard breaksStillness else {
+            let along = scrollAxes.distance(along: translation)
+            if breaksStillness {
+                why = .movedFirst(distance: distance, stillness: tuning.holdStillness)
+            } else if tuning.breaksStillnessAlongScroll(along) {
+                hasMoved = true
+                why = .movedAlongTheScroll(distance: along, stillness: tuning.holdStillnessAlongScroll)
+            } else {
                 why = .withinStillness(distance: distance, stillness: tuning.holdStillness)
                 return []
             }
             // Moved before its hold: the container's scroll, for the rest
             // of the pinch.
             stayedDown = .movedFirst
-            why = .movedFirst(distance: distance, stillness: tuning.holdStillness)
             return [.stayDown(.movedFirst)]
         }
         if let stayedDown {
@@ -250,13 +271,21 @@ public struct PluckPress: Equatable, Sendable {
             why = .notLifted
             return []
         }
+        let moveSinceTheLift = translation - (liftPoint ?? .zero)
+        if tuning.givesBackToScroll(moveSinceTheLift, along: scrollAxes) {
+            // Mostly along the scroll: the pinch is the container's scroll
+            // after all.
+            stayedDown = .givenBackToTheScroll
+            why = .givenBackToTheScroll(along: scrollAxes.distance(along: moveSinceTheLift), across: scrollAxes.distance(across: moveSinceTheLift))
+            return letDown()
+        }
         let judgement = tuning.judgePull(translation, liftPoint: liftPoint, armingPoint: armingPoint, pointsPerMeter: pointsPerMeter)
         breakFreeAt = judgement.threshold
         guard isArmed, judgement.isPull else {
             // Held: the item follows a little, and the pinch has gone this
             // far toward breaking it free.
             let reach = tuning.pullRule.reach(of: judgement)
-            stretch = PluckStretch(reach: reach, needs: judgement.threshold, follow: tuning.tether.follow(forMove: translation - (liftPoint ?? .zero)))
+            stretch = PluckStretch(reach: reach, needs: judgement.threshold, follow: tuning.tether.follow(forMove: moveSinceTheLift))
             farthestStretch = max(farthestStretch, reach)
             why = isArmed ? .notAPull(judgement) : .notArmedYet
             return []
@@ -267,6 +296,21 @@ public struct PluckPress: Equatable, Sendable {
         hasPulled = true
         why = .brokeFree(judgement)
         return [.breakFree]
+    }
+
+    /// The container's scroll offset is `distance` points from where it
+    /// stood at the pinch's touch: before the hold, past the tuning's
+    /// stillness for it, the pinch is the container's scroll for good, and
+    /// its item stays down, whatever phase the scroll view says it's in. A
+    /// pinch told already, or past its hold, changes nothing.
+    public mutating func scrollOffsetMoved(_ distance: Double) -> [Action] {
+        guard !liftedByHold, stayedDown == nil, tuning.scrollOffsetGivesUpHold(distance) else {
+            why = .scrollOffsetWithin(distance: distance, stillness: tuning.scrollOffsetStillness)
+            return []
+        }
+        stayedDown = .containerScrolled
+        why = .scrollOffsetMoved(distance: distance, stillness: tuning.scrollOffsetStillness)
+        return [.stayDown(.containerScrolled)]
     }
 
     /// The pull's drag was let go, the pinch with it: what spawned is let

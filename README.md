@@ -13,9 +13,12 @@ rather than in the simulator, which can't pinch.
 - **Placement**: a panel opens below your gaze, tilted up to you, and stays
   put until you carry it by the pill under it.
 - **Pluck**: pull an item out of a scrolling grid into the room. A pinch
-  that scrolls is a scroll; held still a quarter second, the item lifts and
-  the scroll stops; lifted, it follows your hand a little, held, until
-  you've gone about 2.5 cm, when it breaks free into the room at your hand.
+  is a scroll unless it's a hold: one that moves the grid at all, or moves
+  a little along its scroll, scrolls; held still a quarter second, the item
+  lifts and the scroll stops, until your hand moves along the scroll, which
+  gives the pinch back to it; lifted, it follows your hand a little, held,
+  until you've gone about 2.5 cm any other way, when it breaks free into
+  the room at your hand.
   From there the same pinch carries it by Carry's own rules. Mark the
   scroll view `pluckContainer` and each item `pluckable`, and act on what
   each reports: its tap, its lift, where it spawns, and each step of its

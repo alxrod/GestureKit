@@ -9,9 +9,11 @@ private let pluckContainerLogger = Logger(subsystem: "net.alexbrodriguez.gesture
 /// A scrolling container whose items pluck, a grid or a list, as its scroll
 /// view and its items tell it: which item is lifted, at most one, which its
 /// items draw; whether its scroll is held off under it, as the tuning says;
-/// and its scroll view's phase, which it tells the pinch under way on each
-/// item, so a scroll during a pinch makes it a scroll before its hold, and
-/// settles a lifted item, as the tuning says.
+/// its scroll view's phase and its scroll offset, which it tells the pinch
+/// under way on each item, so a scroll during a pinch, or its content
+/// moving at all, makes it a scroll before its hold, and a scroll settles a
+/// lifted item, as the tuning says; and the axes it scrolls along, which a
+/// hold watches moves along most closely.
 ///
 /// Make one per scroll view, keep it with the view's state, and hand it to
 /// `pluckContainer(_:tuning:trace:)` on the scroll view; each item inside
@@ -28,6 +30,15 @@ public final class PluckContainerModel {
 
     /// Its scroll view's phase, as last told.
     public private(set) var phase = PluckScrollPhase.idle
+
+    /// Its scroll offset, as its scroll view last said, in points; nil
+    /// until it says. Read at a pinch's touch and its hold, and told to the
+    /// pinches under way as it changes, so it's observed by nothing, as it
+    /// changes at every frame of a scroll.
+    @ObservationIgnored private(set) var scrollOffset: SIMD2<Double>?
+
+    /// The axes it scrolls along, as its modifier was last given them.
+    @ObservationIgnored var scrollAxes: PluckScrollAxes = .vertical
 
     @ObservationIgnored private var container = PluckContainer<AnyHashable>()
     @ObservationIgnored var recorder: TraceRecorder?
@@ -117,6 +128,18 @@ public final class PluckContainerModel {
         }
     }
 
+    /// Its scroll view's content offset changed to `offset`: each pinch
+    /// under way hears of it, and gives its hold up should the content have
+    /// moved since its touch.
+    func scrollOffsetChanged(to offset: CGPoint) {
+        let offset = SIMD2(Double(offset.x), Double(offset.y))
+        guard offset != scrollOffset else { return }
+        scrollOffset = offset
+        for driver in Array(pinchedItems.values) {
+            driver.containerOffsetChanged(to: offset)
+        }
+    }
+
     /// Its scroll view left the screen: it no longer scrolls.
     func disappeared() {
         _ = container.disappeared(at: .now)
@@ -159,16 +182,28 @@ public final class PluckContainerModel {
 }
 
 /// What a container marked `pluckContainer` hands its items through the
-/// environment: its model, its tuning, and its trace.
+/// environment: its model, its tuning, its trace, and the axes it scrolls
+/// along.
 struct PluckContainerContext: Sendable {
     let model: PluckContainerModel
     let tuning: PluckTuning
     let recorder: TraceRecorder?
+    let scrollAxes: PluckScrollAxes
 }
 
 extension EnvironmentValues {
     /// The pluckable container around a view, if there is one.
     @Entry var pluckContainerContext: PluckContainerContext? = nil
+}
+
+extension PluckScrollAxes {
+    /// SwiftUI's axes as the pluck's.
+    init(_ axes: Axis.Set) {
+        var plain: PluckScrollAxes = []
+        if axes.contains(.horizontal) { plain.insert(.horizontal) }
+        if axes.contains(.vertical) { plain.insert(.vertical) }
+        self = plain
+    }
 }
 
 extension PluckScrollPhase {
@@ -188,9 +223,13 @@ extension View {
     /// Makes this scroll view a container whose items pluck: each item inside
     /// marked `pluckable(_:title:perform:)` lifts, pulls out, and settles
     /// through `model`, by `tuning`, writing each pinch to `trace`, if it's
-    /// given one. It watches the scroll view's phase, which a hold asks about
-    /// and the pinches under way hear, holds the scroll off while an item is
-    /// lifted, if the tuning stops it, and traces each scroll of its own.
+    /// given one. A pinch is the scroll's unless it's a hold: the container
+    /// watches the scroll view's phase and its content offset, which a hold
+    /// asks about and the pinches under way hear, and tells each pinch the
+    /// axes it scrolls along, `scrollAxes`, the scroll view's own, vertical
+    /// by default, along which a hold allows only a small move. It holds the
+    /// scroll off while an item is lifted, if the tuning stops it, and traces
+    /// each scroll of its own.
     ///
     ///     ScrollView {
     ///         LazyVGrid(columns: columns) {
@@ -202,8 +241,13 @@ extension View {
     ///         }
     ///     }
     ///     .pluckContainer(container, tuning: tuning, trace: recorder)
-    public func pluckContainer(_ model: PluckContainerModel, tuning: PluckTuning = .defaults, trace: TraceRecorder? = nil) -> some View {
-        modifier(PluckContainerModifier(model: model, tuning: tuning, recorder: trace))
+    public func pluckContainer(
+        _ model: PluckContainerModel,
+        tuning: PluckTuning = .defaults,
+        trace: TraceRecorder? = nil,
+        scrollAxes: Axis.Set = .vertical
+    ) -> some View {
+        modifier(PluckContainerModifier(model: model, tuning: tuning, recorder: trace, scrollAxes: PluckScrollAxes(scrollAxes)))
     }
 }
 
@@ -212,11 +256,19 @@ private struct PluckContainerModifier: ViewModifier {
     let model: PluckContainerModel
     let tuning: PluckTuning
     let recorder: TraceRecorder?
+    let scrollAxes: PluckScrollAxes
 
     func body(content: Content) -> some View {
         content
             .onScrollPhaseChange { _, phase in
                 model.scrollPhaseChanged(to: PluckScrollPhase(phase))
+            }
+            // The content's every move, which a hold gives itself up to
+            // whatever phase the scroll view says it's in.
+            .onScrollGeometryChange(for: CGPoint.self) { geometry in
+                geometry.contentOffset
+            } action: { _, offset in
+                model.scrollOffsetChanged(to: offset)
             }
             // A lifted item's pinch moves the item, not the scroll, until it
             // settles, if the tuning stops the scroll.
@@ -226,11 +278,12 @@ private struct PluckContainerModifier: ViewModifier {
             }
             .onAppear {
                 model.recorder = recorder
+                model.scrollAxes = scrollAxes
             }
             .onDisappear {
                 model.disappeared()
             }
-            .environment(\.pluckContainerContext, PluckContainerContext(model: model, tuning: tuning, recorder: recorder))
+            .environment(\.pluckContainerContext, PluckContainerContext(model: model, tuning: tuning, recorder: recorder, scrollAxes: scrollAxes))
     }
 }
 #endif

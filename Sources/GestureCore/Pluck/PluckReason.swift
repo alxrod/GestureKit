@@ -50,9 +50,27 @@ public enum PluckReason: Equatable, Sendable {
     /// points, reaches the hold's `stillness`: the container's scroll, for
     /// the rest of the pinch.
     case movedFirst(distance: Double, stillness: Double)
+    /// Before the hold, a move `distance` along the container's scroll from
+    /// the touch, in the item's points, reaches the hold's `stillness` along
+    /// it: the container's scroll, for the rest of the pinch.
+    case movedAlongTheScroll(distance: Double, stillness: Double)
     /// Before the hold, a move `distance` from the touch, within the hold's
     /// `stillness`: the hold goes on.
     case withinStillness(distance: Double, stillness: Double)
+    /// Before the hold, the container's scroll offset moved `distance`
+    /// points from where it stood at the touch, past its `stillness`: the
+    /// container's scroll, for the rest of the pinch.
+    case scrollOffsetMoved(distance: Double, stillness: Double)
+    /// The container's scroll offset is `distance` points from where it
+    /// stood at the touch, within its `stillness`, or the hold has come, or
+    /// the offset isn't watched: nothing.
+    case scrollOffsetWithin(distance: Double, stillness: Double)
+    /// A lifted pinch moved `along` its container's scroll from where its
+    /// item lifted, and `across` it and in depth, in the item's points,
+    /// mostly along it, and the tuning gives such a pinch back to the
+    /// scroll (`PluckTuning.givesLiftBackToScroll`): the item settles, and
+    /// the pinch is the container's scroll for the rest of it.
+    case givenBackToTheScroll(along: Double, across: Double)
     /// A move of a pinch told as the container's scroll, which lifts and
     /// pulls nothing.
     case scrolling(PluckPress.StayDown)
@@ -119,7 +137,11 @@ extension PluckReason: CustomStringConvertible {
         case .armingNotDue: "armingNotDue"
         case .notANumber: "notANumber"
         case .movedFirst: "movedFirst"
+        case .movedAlongTheScroll: "movedAlongTheScroll"
         case .withinStillness: "withinStillness"
+        case .scrollOffsetMoved: "scrollOffsetMoved"
+        case .scrollOffsetWithin: "scrollOffsetWithin"
+        case .givenBackToTheScroll: "givenBackToTheScroll"
         case .scrolling: "scrolling"
         case .notArmedYet: "notArmedYet"
         case .notLifted: "notLifted"
@@ -154,9 +176,22 @@ extension PluckReason: CustomStringConvertible {
         case .notANumber: "a move that isn't a number"
         case .movedFirst(let distance, let stillness):
             "moved \(pluckPoints(distance)) before the hold, its stillness \(pluckPoints(stillness)): a scroll"
+        case .movedAlongTheScroll(let distance, let stillness):
+            "moved \(pluckPoints(distance)) along the scroll before the hold, its stillness along it \(pluckPoints(stillness)): a scroll"
         case .withinStillness(let distance, let stillness):
             "\(pluckPoints(distance)) from the touch, within the hold's \(pluckPoints(stillness)) stillness"
-        case .scrolling(let why): "a scroll (\(why == .movedFirst ? "moved first" : "the container scrolled"))"
+        case .scrollOffsetMoved(let distance, let stillness):
+            "the scroll offset moved \(pluckPoints(distance)) since the touch, past its \(pluckPoints(stillness)), before the hold: a scroll"
+        case .scrollOffsetWithin(let distance, let stillness):
+            "the scroll offset \(pluckPoints(distance)) from the touch, within its \(pluckPoints(stillness))"
+        case .givenBackToTheScroll(let along, let across):
+            "held, moved \(pluckPoints(along)) along the scroll and \(pluckPoints(across)) across it and in depth: given back to the scroll"
+        case .scrolling(let why):
+            switch why {
+            case .movedFirst: "a scroll (moved first)"
+            case .containerScrolled: "a scroll (the container scrolled)"
+            case .givenBackToTheScroll: "a scroll (given back to it)"
+            }
         case .notArmedYet: "held, the pull not armed yet"
         case .notLifted: "the item isn't lifted"
         case .notAPull(let judgement): "held: \(judgement)"

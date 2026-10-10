@@ -55,14 +55,15 @@ import Testing
         #expect(account.armedAfter == .seconds(0.45))
     }
 
-    /// A fresh pinch's settling, 15 pt in its first quarter second, still
-    /// doesn't give the hold up.
+    /// A fresh pinch's settling, as item 2's on the headset, 15 pt in its
+    /// first quarter second, 8.2 of them along the scroll, still doesn't
+    /// give the hold up.
     @Test func aFreshPinchsSettlingStillLifts() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        #expect(moved(&pinches, 4, 15, -2, at: 0.2).actions == [])
+        #expect(moved(&pinches, 12.5, 8.2, -2.5, at: 0.2).actions == [])
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.25)).actions == [.lift])
-        #expect(pinches.press?.liftPoint == SIMD3(4, 15, -2))
+        #expect(pinches.press?.liftPoint == SIMD3(12.5, 8.2, -2.5))
     }
 
     // MARK: Held: the item follows, with resistance
@@ -78,16 +79,16 @@ import Testing
         #expect(pinches.stretch == nil)
         #expect(pinches.follow == .zero)
 
-        let first = moved(&pinches, 0, 15, 0, at: 0.3)
+        let first = moved(&pinches, 15, 0, 0, at: 0.3)
         #expect(first == PluckPinches.Told(why: .notArmedYet))
         let held = try #require(pinches.stretch)
         #expect(held.reach == 15)
         #expect(abs(held.needs - 34) < 1e-9)
         // 7.5 · 20 / 27.5: a little over a third of the hand's 15 pt.
-        #expect(isClose(held.follow, SIMD3(0, 150.0 / 27.5, 0)))
+        #expect(isClose(held.follow, SIMD3(150.0 / 27.5, 0, 0)))
         #expect(pinches.follow == held.follow)
 
-        let armed = moved(&pinches, 0, 30, 0, at: 0.5)
+        let armed = moved(&pinches, 30, 0, 0, at: 0.5)
         #expect(armed.actions == [.pullArmed])
         guard case .notAPull(let judgement) = armed.why else {
             Issue.record("expected the item held, got \(armed.why)")
@@ -96,7 +97,7 @@ import Testing
         #expect(judgement.verdict == .tooShort)
         #expect(judgement.description == "too short, 30.0 pt from the touch (0.0 deep, 30.0 across), needs 34.0 pt")
         // 15 · 20 / 35: the next 15 pt of the hand draw it 3 pt more.
-        #expect(isClose(pinches.follow, SIMD3(0, 300.0 / 35, 0)))
+        #expect(isClose(pinches.follow, SIMD3(300.0 / 35, 0, 0)))
         #expect(pinches.stretch?.reach == 30)
         #expect(pinches.press?.isLifted == true)
     }
@@ -108,15 +109,15 @@ import Testing
     @Test func theFollowIsMeasuredFromWhereItLifted() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        _ = moved(&pinches, 0, 20, 0, at: 0.2)
+        _ = moved(&pinches, 20, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
-        _ = moved(&pinches, 0, 20.5, 0, at: 0.3)
+        _ = moved(&pinches, 20.5, 0, 0, at: 0.3)
         #expect(pinches.stretch?.reach == 0.5)
-        _ = moved(&pinches, 0, 20, 0, at: 0.35)
+        _ = moved(&pinches, 20, 0, 0, at: 0.35)
         #expect(pinches.follow == .zero)
-        _ = moved(&pinches, 10, 20, 0, at: 0.4)
-        #expect(pinches.follow.y == 0)
-        #expect(pinches.follow.x > 0 && pinches.follow.x < 5)
+        _ = moved(&pinches, 20, 0, 10, at: 0.4)
+        #expect(pinches.follow.x == 0)
+        #expect(pinches.follow.z > 0 && pinches.follow.z < 5)
     }
 
     /// A hand that has pinched and holds still, settling and trembling a few
@@ -124,7 +125,7 @@ import Testing
     @Test func aStillHandNeverBreaksFree() throws {
         var pinches = liftedAndArmed()
         var t = 0.5
-        for (x, y, z) in [(3.0, 15.0, 0.0), (5, 17, 4.2), (4, 16, 0), (6, 18, 4.2), (5, 16, 8.4), (4, 17, 4.2)] {
+        for (x, y, z) in [(15.0, 3.0, 0.0), (17, 5, 4.2), (16, 4, 0), (18, 6, 4.2), (16, 5, 8.4), (17, 4, 4.2)] {
             #expect(moved(&pinches, x, y, z, at: t).actions == [])
             t += 0.4
         }
@@ -143,12 +144,12 @@ import Testing
     @Test func itBreaksFreeAt34PointsFromWhereItLifted() {
         var pinches = PluckPinches()
         _ = pinches.pressBegan(at: at(0))
-        _ = moved(&pinches, 0, 12, 0, at: 0.2)
+        _ = moved(&pinches, 12, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = pinches.armPull(at: at(0.45))
-        #expect(moved(&pinches, 0, 45.9, 0, at: 0.6).actions == [])
-        #expect(pinches.follow.y > 9)
-        let free = moved(&pinches, 0, 46, 0, at: 0.65)
+        #expect(moved(&pinches, 45.9, 0, 0, at: 0.6).actions == [])
+        #expect(pinches.follow.x > 9)
+        let free = moved(&pinches, 46, 0, 0, at: 0.65)
         #expect(free.actions == [.breakFree])
         #expect(free.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 34, threshold: 34, verdict: .pulls, origin: .lift)))
         #expect(pinches.stretch == nil)
@@ -157,15 +158,17 @@ import Testing
         #expect(pinches.press?.farthestStretch == 34)
     }
 
-    /// Any way breaks it free: across, up, down, toward the viewer, or away.
-    @Test func itBreaksFreeAnyWay() {
-        for move in [SIMD3(34.0, 0, 0), SIMD3(-34, 0, 0), SIMD3(0, 34, 0), SIMD3(0, -34, 0), SIMD3(0, 0, 34), SIMD3(0, 0, -34), SIMD3(20, 20, 20)] {
+    /// Any way but mostly along the scroll breaks it free: across, toward
+    /// the viewer, or away, or on a slant; mostly up or down gives the pinch
+    /// back to the scroll (`PluckScrollFirstTests`).
+    @Test func itBreaksFreeAnyWayButAlongTheScroll() {
+        for move in [SIMD3(34.0, 0, 0), SIMD3(-34, 0, 0), SIMD3(0, 0, 34), SIMD3(0, 0, -34), SIMD3(20, 20, 20), SIMD3(0, 30, 16)] {
             var pinches = PluckPinches()
             _ = pinches.pressBegan(at: at(0))
-            _ = moved(&pinches, 0, 16, 0, at: 0.2)
+            _ = moved(&pinches, 16, 0, 0, at: 0.2)
             _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
             _ = pinches.armPull(at: at(0.45))
-            let told = pinches.dragMoved(SIMD3(0, 16, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.6))
+            let told = pinches.dragMoved(SIMD3(16, 0, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.6))
             #expect(told.actions == [.breakFree], "moved \(move)")
         }
     }
@@ -206,7 +209,7 @@ import Testing
     /// hold half a second, the item following nothing, and 8.2 pt from where
     /// it lifted breaking it free.
     @Test func theOldBehaviorIsATuningAway() {
-        var pinches = PluckPinches(tuning: .notSticky)
+        var pinches = PluckPinches(tuning: .loose)
         #expect(pinches.pressBegan(at: at(0)).countdowns == [.stopArming, .startHold(.seconds(0.5))])
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))

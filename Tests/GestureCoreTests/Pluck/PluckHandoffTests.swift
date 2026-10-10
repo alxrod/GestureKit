@@ -140,7 +140,7 @@ import Testing
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = pinches.armPull(at: at(0.45))
-        _ = pinches.dragMoved(SIMD3(0, 40, 0), pointsPerMeter: pointsPerMeter, at: at(0.6))
+        _ = pinches.dragMoved(SIMD3(40, 0, 0), pointsPerMeter: pointsPerMeter, at: at(0.6))
         #expect(pinches.dragCancelled(at: at(0.7)).actions == [.cancelSpawn, .settle])
     }
 }
