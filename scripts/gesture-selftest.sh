@@ -75,6 +75,8 @@ expect "the pluck station lists its grid and the items it has made" \
   '.ok and (.result.grids | length == 1) and (.result.items | length > 4)' targets
 expect "a tap on an item is its tap, and the app hears it" \
   '.outcome == "tapped" and .app.lab.pluck.lastTapped == 2' tap "item 2"
+expect "an item is driven by its app's id too" \
+  '.outcome == "tapped" and .result.item == "item 5" and .app.lab.pluck.lastTapped == 5' tap 5
 expect "a pinch on an item that scrolls first is the grid's scroll, and the grid moves" \
   '.outcome == "scrolled" and .result.scrolledBy >= 590 and .result.itemOutcome == "stayed down" and .result.gridNow.alarms == 0' \
   scroll by=600 on="item 3"
