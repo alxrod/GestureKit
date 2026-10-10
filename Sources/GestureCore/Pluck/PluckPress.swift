@@ -44,9 +44,12 @@
 ///   touched (`PluckPullRule`, `PluckPullOrigin`). A move it turns down
 ///   breaks nothing free, and the item stays up, following. Breaking free,
 ///   the item spawns into the room where the drag is (`Action.breakFree`),
-///   and the pluck's part is over: the rest of the pinch carries what
-///   spawned, each move handed to a carry (`Action.carrySpawned`,
-///   `PluckHandoff`). One pinch breaks free once.
+///   and the pluck's part is over: the item settles back into its
+///   container at once, which lets the container's scroll go, and the rest
+///   of the pinch carries what spawned, each move handed to a carry
+///   (`Action.carrySpawned`, `PluckHandoff`). One pinch breaks free once.
+///   Until October 9 the item stayed lifted, the scroll held, until the
+///   carry was let go, so a carry whose end went unheard held the scroll.
 /// - **The item settles** as the pinch is let go: as its drag ends, or is
 ///   cancelled, if the drag has spoken; else as the hold's press ends,
 ///   unless the tuning keeps it up then (`pressEndSettlesLiftedItem`). The
@@ -54,8 +57,15 @@
 ///   and the item stays up then. Let go short of breaking free, it settles
 ///   with nothing spawned.
 /// - **The release tap**: a pinch that lifted its item lets the item's tap
-///   fire as it's let go, which isn't a tap (`swallowsReleaseTap`). A pinch
+///   fire as it's let go, which isn't a tap (`swallowsReleaseTap`), and the
+///   pinch is let go then, whatever its press or its drag still say: what
+///   it carries is let go, and its item settles (`releaseTapped()`). A pinch
 ///   let go before its hold is the item's tap.
+/// - **The quiet**: a lift kept up past its press with its drag silent has
+///   no word left to say it's let go, as its tap doesn't come for a press
+///   its lift cancelled; once nothing has been heard for the tuning's quiet,
+///   it's taken as let go, and the item settles (`quietPassed(after:)`,
+///   `PluckTuning.quietRelease`).
 ///
 /// Each word answers with what the item does, and leaves why in `why`, for
 /// a trace. Distances are in the item's points, with +z toward the viewer.
@@ -162,9 +172,11 @@ public struct PluckPress: Equatable, Sendable {
         liftedByHold || hasPulled
     }
 
-    /// Whether its item is lifted: held, or pulling.
+    /// Whether its item is lifted in its container: held, short of breaking
+    /// free, which holds the container's scroll as tuned. An item that broke
+    /// free has settled, its pinch carrying what spawned (`isPulling`).
     public var isLifted: Bool {
-        isHeld || isPulling
+        isHeld
     }
 
     /// Where its item is drawn from where it stands lifted, in its points,
@@ -295,7 +307,9 @@ public struct PluckPress: Equatable, Sendable {
         isPulling = true
         hasPulled = true
         why = .brokeFree(judgement)
-        return [.breakFree]
+        // The pluck's part is over: the item settles, letting the
+        // container's scroll go, and the carry has the pinch.
+        return [.breakFree] + letDown()
     }
 
     /// The container's scroll offset is `distance` points from where it
@@ -356,17 +370,43 @@ public struct PluckPress: Equatable, Sendable {
         return letDown()
     }
 
-    /// The item's tap came as the pinch was let go, its press and its drag
-    /// having let go of it, before its press's end or after: a lifted item
-    /// settles, as one whose press's end the tuning kept up.
+    /// The item's tap came as the pinch was let go, before its press's end or
+    /// its drag's, or after: the pinch is let go, whatever they still say,
+    /// so what it carries is let go where it stands, and a lifted item
+    /// settles.
     public mutating func releaseTapped() -> [Action] {
+        isDragging = false
+        var actions: [Action] = []
+        if isPulling {
+            isPulling = false
+            actions.append(.releaseSpawned)
+        }
         why = .releasedByItsTap
+        return actions + letDown()
+    }
+
+    /// Nothing has been heard from the pinch for `quiet`, its item kept up
+    /// past its press with neither its press nor its drag having it: it's
+    /// taken as let go, and the item settles.
+    public mutating func quietPassed(after quiet: Duration) -> [Action] {
+        why = .nothingHeard(seconds: Double(quiet.components.seconds) + Double(quiet.components.attoseconds) / 1e18)
         return letDown()
+    }
+
+    /// The pinch's item was settled by its container, as by its safety net,
+    /// the app, another item lifting, or its scroll: it's down, and the
+    /// pinch goes on with nothing to pull.
+    public mutating func settledByTheContainer() {
+        guard isHeld else { return }
+        isHeld = false
+        stretch = nil
+        why = .settledByTheContainer
     }
 
     /// The container began to scroll during the pinch: before the hold, the
     /// pinch is a scroll for good, and its item stays down; lifted, the item
-    /// settles, unless its pull is under way, or the tuning keeps it up.
+    /// settles, unless the tuning keeps it up. A pull under way has settled
+    /// its item already, and carries on.
     public mutating func containerScrolled() -> [Action] {
         if stayedDown != nil || (liftedByHold && !isHeld) {
             why = .toldAlready

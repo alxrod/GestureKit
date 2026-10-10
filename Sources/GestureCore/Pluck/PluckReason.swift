@@ -107,8 +107,9 @@ public enum PluckReason: Equatable, Sendable {
     /// the pinch, and the tuning keeps it lifted
     /// (`PluckTuning.pressEndSettlesLiftedItem`).
     case liftOutlivesItsPress
-    /// The item's tap came as the pinch was let go, its lift kept past its
-    /// press: it settles.
+    /// The item's tap came as the pinch was let go: whatever its press or
+    /// its drag still said, it's let go, what it carries let go where it
+    /// stands, and its item settles.
     case releasedByItsTap
     /// A pinch began elsewhere in the container while this one's item was
     /// kept up past its press, neither gesture having it: its end went
@@ -116,6 +117,17 @@ public enum PluckReason: Equatable, Sendable {
     case pinchElsewhere
     /// The item went mid-pinch: its pull is taken away, and it's let down.
     case itemWent
+    /// Kept up past its press, neither its press nor its drag having it,
+    /// nothing was heard from the pinch for `seconds`: it's taken as let go,
+    /// and its item settles (`PluckTuning.quietRelease`).
+    case nothingHeard(seconds: Double)
+    /// The item's container settled it, as its safety net, the app, another
+    /// item's lift, or its scroll did: the pinch goes on, its item down.
+    case settledByTheContainer
+    /// A press came while the drag said it had the pinch, but the drag had
+    /// said nothing for `seconds`, past the quiet: its end went unheard, and
+    /// the press begins a pinch of its own.
+    case dragWentQuiet(seconds: Double)
     /// The word came with no pinch under way, and changed nothing.
     case noPinch
 }
@@ -157,6 +169,9 @@ extension PluckReason: CustomStringConvertible {
         case .releasedByItsTap: "releasedByItsTap"
         case .pinchElsewhere: "pinchElsewhere"
         case .itemWent: "itemWent"
+        case .nothingHeard: "nothingHeard"
+        case .settledByTheContainer: "settledByTheContainer"
+        case .dragWentQuiet: "dragWentQuiet"
         case .noPinch: "noPinch"
         }
     }
@@ -203,9 +218,12 @@ extension PluckReason: CustomStringConvertible {
         case .pressEnded: "the press ended"
         case .dragHasThePinch: "the press ended, the drag has the pinch"
         case .liftOutlivesItsPress: "the press ended, the lift kept past it"
-        case .releasedByItsTap: "the release tap came: settles"
+        case .releasedByItsTap: "the release tap came: let go"
         case .pinchElsewhere: "a pinch began elsewhere: settles, its end unseen"
         case .itemWent: "the item went"
+        case .nothingHeard(let seconds): "kept up past its press, nothing heard for \(pluckReasonSeconds(seconds)) s: taken as let go"
+        case .settledByTheContainer: "its container settled it"
+        case .dragWentQuiet(let seconds): "the drag said nothing for \(pluckReasonSeconds(seconds)) s, its end unheard: a new pinch"
         case .noPinch: "no pinch under way"
         }
     }
@@ -247,4 +265,13 @@ private func pluckOneDecimal(_ number: Double) -> String {
     let whole = Int(abs(tenths)) / 10
     let tenth = Int(abs(tenths)) % 10
     return "\(sign)\(whole).\(tenth)"
+}
+
+/// Seconds to two decimals, "0.50", without Foundation's formatting.
+private func pluckReasonSeconds(_ seconds: Double) -> String {
+    guard seconds.isFinite else { return "\(seconds)" }
+    let hundredths = Int((seconds * 100).rounded())
+    let sign = hundredths < 0 ? "-" : ""
+    let fraction = abs(hundredths) % 100
+    return "\(sign)\(abs(hundredths) / 100).\(fraction < 10 ? "0" : "")\(fraction)"
 }

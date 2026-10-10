@@ -125,7 +125,7 @@ import Testing
             "followShare", "followCap", "pullDepthPerDrift", "pullsAnyDirection", "measuresPullFromLift", "measuresPullFromArming",
             "depthGrowsTowardViewer", "depthScale",
             "stopsScrollUnderLiftedItem", "givesLiftBackToScroll", "scrollSettlesLiftedItem", "pressEndSettlesLiftedItem",
-            "releaseTapGrace", "holdsFromTheDrag", "pullDragIsSimultaneous", "pushTowardViewer",
+            "quietRelease", "unheardHoldRelease", "releaseTapGrace", "holdsFromTheDrag", "pullDragIsSimultaneous", "pushTowardViewer",
             "liftScale", "liftDepth",
         ])
     }
@@ -138,7 +138,7 @@ import Testing
             followShare: 0.3, followCap: 12, pullDepthPerDrift: 0, pullsAnyDirection: false, measuresPullFromLift: false, measuresPullFromArming: true,
             depthGrowsTowardViewer: false, depthScale: 2,
             stopsScrollUnderLiftedItem: false, givesLiftBackToScroll: false, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
-            releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false, pushTowardViewer: 60,
+            quietRelease: 0.8, unheardHoldRelease: 2, releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false, pushTowardViewer: 60,
             liftScale: 1.12, liftDepth: 48
         )
         #expect(tuned.tunedValues.count == PluckTuning.parameters.count)
@@ -260,7 +260,7 @@ import Testing
         #expect(pinches.holdFired(asTheContainerScrolled: false, at: at(0.5)).countdowns == [.startArming(.seconds(0.5))])
         #expect(pinches.armPull(at: at(0.7)) == PluckPinches.Told(why: .armingNotDue))
         #expect(moved(&pinches, 0, 0, 40, at: 0.9) == PluckPinches.Told(why: .notArmedYet))
-        #expect(moved(&pinches, 0, 0, 41, at: 1).actions == [.pullArmed, .breakFree])
+        #expect(moved(&pinches, 0, 0, 41, at: 1).actions == [.pullArmed, .breakFree, .settle])
 
         var fromTheArming = PluckPinches(tuning: PluckTuning(pullArmDelay: 0.5, measuresPullFromLift: false, measuresPullFromArming: true))
         _ = fromTheArming.pressBegan(at: at(0))
@@ -269,7 +269,7 @@ import Testing
         #expect(moved(&fromTheArming, 0, 0, 41, at: 1).actions == [.pullArmed])
         #expect(fromTheArming.press?.armingPoint == SIMD3(0, 0, 40))
         #expect(moved(&fromTheArming, 0, 0, 73.7, at: 1.05).actions == [])
-        #expect(moved(&fromTheArming, 0, 0, 73.8, at: 1.1).actions == [.breakFree])
+        #expect(moved(&fromTheArming, 0, 0, 73.8, at: 1.1).actions == [.breakFree, .settle])
 
         var firstShipped = PluckTuning.firstShipped
         firstShipped.pullArmDelay = 0.5
@@ -277,7 +277,7 @@ import Testing
         _ = fromTheTouch.pressBegan(at: at(0))
         _ = fromTheTouch.holdFired(asTheContainerScrolled: false, at: at(0.5))
         #expect(moved(&fromTheTouch, 0, 0, 40, at: 0.9) == PluckPinches.Told(why: .notArmedYet))
-        #expect(moved(&fromTheTouch, 0, 0, 41, at: 1).actions == [.pullArmed, .breakFree])
+        #expect(moved(&fromTheTouch, 0, 0, 41, at: 1).actions == [.pullArmed, .breakFree, .settle])
     }
 
     /// With no delay, the pull arms as the item lifts, at the count's word.
@@ -297,7 +297,7 @@ import Testing
         #expect(tuning.breakFreeThreshold(pointsPerMeter: pointsPerMeter) == 54)
         var pinches = liftedAndArmed(tuning)
         #expect(moved(&pinches, 0, 0, 40, at: 0.8).actions == [])
-        #expect(moved(&pinches, 0, 0, 54, at: 0.9).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 0, 54, at: 0.9).actions == [.breakFree, .settle])
     }
 
     /// The default takes a move across the scroll, as far as 2.5 cm;
@@ -306,14 +306,14 @@ import Testing
     @Test func thePullRuleIsTheTunings() {
         var any = liftedAndArmed(PluckTuning())
         #expect(moved(&any, 33.7, 0, 0, at: 0.75).actions == [])
-        #expect(moved(&any, 33.8, 0, 0, at: 0.8).actions == [.breakFree])
+        #expect(moved(&any, 33.8, 0, 0, at: 0.8).actions == [.breakFree, .settle])
         var slanted = liftedAndArmed(.towardTheViewerFromTheTouch)
         #expect(moved(&slanted, 0, 30, 0, at: 0.8).actions == [])
         #expect(moved(&slanted, 0, 200, 40, at: 0.85).actions == [])
         var toward = PluckTuning.towardTheViewerFromTheTouch
         toward.pullDepthPerDrift = 0
         var towardPinches = liftedAndArmed(toward)
-        #expect(moved(&towardPinches, 0, 200, 40, at: 0.8).actions == [.breakFree])
+        #expect(moved(&towardPinches, 0, 200, 40, at: 0.8).actions == [.breakFree, .settle])
     }
 
     /// A drag whose depth the tuning reads as running away from the viewer
@@ -324,7 +324,7 @@ import Testing
         #expect(flipped.viewerTranslation(SIMD3(1, 2, -30)) == SIMD3(1, 2, 30))
         var pinches = liftedAndArmed(flipped)
         #expect(moved(&pinches, 0, 0, 40, at: 0.8).actions == [])
-        #expect(moved(&pinches, 0, 0, -40, at: 0.9).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 0, -40, at: 0.9).actions == [.breakFree, .settle])
     }
 
     /// A drag whose depth the tuning scales up pulls sooner, its moves
@@ -335,7 +335,7 @@ import Testing
         #expect(scaled.viewerTranslation(SIMD3(10, 20, 14)) == SIMD3(10, 20, 28))
         var pinches = liftedAndArmed(scaled)
         let told = moved(&pinches, 0, 0, 14, at: 0.8)
-        #expect(told.actions == [.breakFree])
+        #expect(told.actions == [.breakFree, .settle])
         #expect(told.why == .brokeFree(PluckPullJudgement(depth: 28, drift: 0, threshold: 27, verdict: .pulls, origin: .touch)))
     }
 
@@ -350,12 +350,12 @@ import Testing
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         let cancelled = pinches.pressEnded(at: at(0.51))
-        #expect(cancelled == PluckPinches.Told(why: .liftOutlivesItsPress))
+        #expect(cancelled == PluckPinches.Told(why: .liftOutlivesItsPress, countdowns: [.startQuiet(.seconds(0.5))]))
         #expect(pinches.press?.isLifted == true)
         #expect(pinches.armPull(at: at(0.7)).actions == [.pullArmed])
-        #expect(moved(&pinches, 0, 0, 34, at: 0.8).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 0, 34, at: 0.8).actions == [.breakFree, .settle])
         let told = pinches.dragEnded(at: at(1.2))
-        #expect(told.actions == [.releaseSpawned, .settle])
+        #expect(told.actions == [.releaseSpawned])
         let account = try #require(told.ended)
         #expect(account.outcome == .pull)
         #expect(account.pressEndedAfter == .seconds(0.51))

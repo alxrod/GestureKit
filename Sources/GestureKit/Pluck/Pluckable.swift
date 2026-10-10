@@ -18,11 +18,14 @@ public enum PluckEvent: Equatable, Sendable {
     /// The item lifted, held still; it shows lifted, following the hand a
     /// little, until it breaks free or settles.
     case lifted
-    /// The item settled back into its container.
+    /// The item settled back into its container: let go short of breaking
+    /// free, or as it broke free, what it pulls out spawning (`spawned`),
+    /// so the container's scroll goes on while the pinch carries that.
     case settled
     /// The item broke free: spawn what it pulls out here, the drag's place
-    /// pushed toward the viewer (`PluckTuning.pushTowardViewer`). The rest
-    /// of the pinch carries it (`carried`).
+    /// pushed toward the viewer (`PluckTuning.pushTowardViewer`). The item
+    /// settles back into its container at once (`settled`), and the rest of
+    /// the pinch carries what spawned (`carried`).
     case spawned(at: SIMD3<Float>?)
     /// The pinch carries what spawned, by the carry's own rule: its middle
     /// where it spawned plus the hand's translation since, 1:1, `handMoved`.
@@ -48,11 +51,13 @@ extension View {
     /// item lifts, and the container's scroll stops under it, as tuned;
     /// lifted, it follows the hand a little, held to its place, until the
     /// hand has gone 2.5 cm, when it breaks free and spawns into the room
-    /// at the hand, reported through `perform`. From there the pinch carries
-    /// what spawned by GestureCore's carry, each step reported as
-    /// `PluckEvent.carried`. A pinch let go before anything else is the
-    /// item's tap; one let go while the item is held, short of breaking
-    /// free, settles it, no tap.
+    /// at the hand, reported through `perform`, and settles back into its
+    /// grid. From there the pinch carries what spawned by GestureCore's
+    /// carry, each step reported as `PluckEvent.carried`. A pinch let go
+    /// before anything else is the item's tap; one let go while the item is
+    /// held, short of breaking free, settles it, no tap. A lift that
+    /// outlived its press hears nothing as it's let go, so it settles once
+    /// nothing has been heard for half a second (`PluckTuning.quietRelease`).
     ///
     /// `id` names the item among its container's; `title` names it in the
     /// trace and the log. The item draws its own lift and follow
@@ -140,7 +145,32 @@ private struct PluckableItemModifier: ViewModifier {
             // it spawned is taken away here, and it's let down.
             .onDisappear { driver.itemWent() }
             .raisedWhileLifted(isLifted)
+            #if DEBUG
+            .modifier(PluckStandInListener(adapter: .pluckItem(title)) { standInStep($0) })
+            #endif
     }
+
+    #if DEBUG
+    /// A word of the hand's stand-in (`PinchStandIn`), as the item's button
+    /// and drag would say it, through the same calls: a drag touched 130 pt
+    /// in from the item's corner and moved as it says.
+    private func standInStep(_ step: PinchStandIn.PluckStep) {
+        let setting = setting(context?.tuning ?? .defaults)
+        let touch = SIMD3<Double>(130, 130, 0)
+        switch step {
+        case .pressDown: driver.pressChanged(true, setting)
+        case .pressUp: driver.pressChanged(false, setting)
+        case .tapped: driver.tapped(setting)
+        case .dragMoved(let points):
+            let at = touch + points
+            driver.dragMoved(points, at: Point3D(x: at.x, y: at.y, z: at.z), setting)
+        case .dragEnded: driver.dragEnded(at: Point3D(x: touch.x, y: touch.y, z: touch.z), setting)
+        case .dragStopped: driver.dragStopped(setting)
+        case .itemWent: driver.itemWent()
+        case .scrollPhase: break
+        }
+    }
+    #endif
 
     /// The item as its press is heard: a button, whose press the hold counts
     /// from and whose tap is the item's, or, with the hold counted from the

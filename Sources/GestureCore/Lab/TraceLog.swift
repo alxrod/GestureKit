@@ -128,6 +128,10 @@ public struct TracedInteraction: Sendable, Hashable, Identifiable {
     public let date: Date
     /// When it began, by the clock its events are timed on.
     public let began: ContinuousClock.Instant
+    /// Whether it's an alarm rather than an interaction: something a gesture
+    /// found wrong, such as a hold no pinch backs, which a trace shows in
+    /// red so it can't be missed.
+    public let isAlarm: Bool
     /// What happened in it, in order.
     public fileprivate(set) var events: [TraceEvent] = []
     /// What it came to, such as "tap", "scroll", or "pull"; nil while it's
@@ -148,7 +152,7 @@ public struct TracedInteraction: Sendable, Hashable, Identifiable {
     /// What it was on and what it came to, in a line: "#3 Trace check ·
     /// Pinch on the cube → tap, 0.12 s".
     public var headline: String {
-        var line = "#\(id) \(gesture) · \(title) → "
+        var line = "#\(id) \(gesture)\(isAlarm ? " alarm" : "") · \(title) → "
         if let outcome, let lasted {
             line += "\(outcome), \(traceSeconds(lasted)) s"
         } else {
@@ -166,12 +170,13 @@ public struct TracedInteraction: Sendable, Hashable, Identifiable {
         return headline + ": " + events.map(\.text).joined(separator: "; ")
     }
 
-    init(id: Int, gesture: String, title: String, date: Date, began: ContinuousClock.Instant) {
+    init(id: Int, gesture: String, title: String, date: Date, began: ContinuousClock.Instant, isAlarm: Bool = false) {
         self.id = id
         self.gesture = gesture
         self.title = title
         self.date = date
         self.began = began
+        self.isAlarm = isAlarm
     }
 }
 
@@ -230,11 +235,18 @@ public struct TraceLog: Sendable, Equatable {
     }
 
     /// Begins an interaction with `gesture`, on what `title` says, at `time`
-    /// on the events' clock and `date` on the wall clock, and gives its id.
+    /// on the events' clock and `date` on the wall clock, and gives its id;
+    /// an alarm, `isAlarm`, if it says something went wrong.
     @discardableResult
-    public mutating func begin(_ gesture: String, title: String, at time: ContinuousClock.Instant, date: Date) -> TracedInteraction.ID {
+    public mutating func begin(
+        _ gesture: String,
+        title: String,
+        at time: ContinuousClock.Instant,
+        date: Date,
+        isAlarm: Bool = false
+    ) -> TracedInteraction.ID {
         lastID += 1
-        interactions.insert(TracedInteraction(id: lastID, gesture: gesture, title: title, date: date, began: time), at: 0)
+        interactions.insert(TracedInteraction(id: lastID, gesture: gesture, title: title, date: date, began: time, isAlarm: isAlarm), at: 0)
         if interactions.count > capacity { interactions.removeLast(interactions.count - capacity) }
         return lastID
     }

@@ -21,13 +21,18 @@ struct PluckLabCard: Identifiable, Equatable {
 /// held still a quarter second, an item lifts and the scroll stops, until
 /// the hand moves mostly up or down, which gives the pinch back to it; lifted, it follows the hand a little, held to its
 /// place, until the hand has gone 2.5 cm, when it breaks free and spawns as
-/// a card at the hand. From there the pluck's part is over: the same pinch
-/// carries the card by the carry's own rules, 1:1, clear of the head, and
-/// the card faces you through the facing system; once let go, it's carried
-/// by the grab handle under it, as any carried panel.
+/// a card at the hand, the item settling back into the grid. From there the
+/// pluck's part is over: the same pinch carries the card by the carry's own
+/// rules, 1:1, clear of the head, and the card faces you through the facing
+/// system; once let go, it's carried by the grab handle under it, as any
+/// carried panel.
 /// Every pinch is traced, each word with why it did what it did, and the
 /// grid's own scrolls apart, so one pinch's timeline says whether a scroll
-/// lifted, how far the held item stretched, and when it broke free.
+/// lifted, how far the held item stretched, and when it broke free. Under
+/// the grid, a status line says whether the scroll is on or held, by which
+/// item and since when, and what pinch is under way, and shows in red the
+/// last alarm, raised should the scroll stay held with no pinch backing it,
+/// as Alex found on October 9, or the container's safety net let it go.
 @MainActor @Observable
 final class PluckStation: LabStation {
     let id = "pluck"
@@ -243,7 +248,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand, the item settling back into the grid. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. Let go of a lifted item without moving and it settles within half a second, so the next pinch scrolls; hold it perfectly still that long and it settles too. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off. Under the grid, the status line says whether the scroll is on or held, by which item and since when, and the pinch under way: after any pluck, lift, or scroll, it should read Scroll on within a second of letting go. A red alarm there and in the trace means the scroll stayed held with no pinch under way past half a second, or the safety net had to let it go a second after hearing nothing; its trace line has the state and the last ten things the grid heard.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
@@ -293,30 +298,86 @@ private struct PluckLabGridWindow: View {
     }
 }
 
-/// Below the pluck's grid: the cards in the room, what was last tapped, and
-/// Clear the room.
+/// Below the pluck's grid: the grid's scroll and the pinch under way, in a
+/// view of its own (`PluckLabScrollStatus`); the cards in the room, what was
+/// last tapped, and Clear the room.
 private struct PluckLabGridStatus: View {
     let station: PluckStation
 
     var body: some View {
-        HStack(spacing: 20) {
-            Text(pluckLabCardsText(station))
-                .font(.system(size: 20, weight: .semibold).monospacedDigit())
-            if let tapped = station.lastTapped {
-                Text("Tapped item \(tapped) · \(station.taps)")
-                    .font(.system(size: 18).monospacedDigit())
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            PluckLabScrollStatus(container: station.container)
+            HStack(spacing: 20) {
+                Text(pluckLabCardsText(station))
+                    .font(.system(size: 20, weight: .semibold).monospacedDigit())
+                if let tapped = station.lastTapped {
+                    Text("Tapped item \(tapped) · \(station.taps)")
+                        .font(.system(size: 18).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button("Clear the room", systemImage: "trash") {
+                    station.clearCards()
+                }
+                .disabled(station.cardCount == 0)
             }
-            Button("Clear the room", systemImage: "trash") {
-                station.clearCards()
-            }
-            .disabled(station.cardCount == 0)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .glassBackgroundEffect()
         .padding(.top, 16)
     }
+}
+
+/// The grid's scroll, always in view: on, or held by which item and since
+/// when, with how long it has been held; the pinch under way, or the one
+/// the pluck's rules still keep with no gesture having it; and, in red, the
+/// last alarm, raised once the scroll stayed held with no pinch under way
+/// for more than half a second. It reads only the container's status,
+/// which changes as an item lifts or settles, a gesture takes or lets go of
+/// a pinch, or the alarm is raised, never at a drag's every word.
+private struct PluckLabScrollStatus: View {
+    let container: PluckContainerModel
+
+    var body: some View {
+        let status = container.status
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Circle()
+                    .fill(status.heldBy == nil ? Color.green : Color.orange)
+                    .frame(width: 12, height: 12)
+                if let heldBy = status.heldBy, let since = status.heldSince {
+                    Text("Scroll held by \(heldBy) since \(since.formatted(.dateTime.hour().minute().second()))")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(since, style: .timer)
+                        .font(.system(size: 18).monospacedDigit())
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("Scroll on")
+                        .font(.system(size: 18, weight: .semibold))
+                }
+            }
+            Text(pluckLabPinchText(status))
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if let alarm = status.lastAlarm {
+                Text("Alarm ×\(status.alarms): \(alarm)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+            }
+        }
+        .frame(width: 1000, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The pinch under way, as the status line says it.
+private func pluckLabPinchText(_ status: PluckContainerStatus) -> String {
+    guard let pinch = status.pinch else { return "No pinch under way" }
+    return status.pinchIsUnderWay
+        ? "Pinch under way on \(pinch)"
+        : "No pinch under way; the pluck still keeps one on \(pinch)"
 }
 
 /// The pluck's part of the space: each card that broke free of the grid,

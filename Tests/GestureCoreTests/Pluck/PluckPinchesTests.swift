@@ -151,16 +151,19 @@ import Testing
         #expect(!pinches.tapped(at: at(0.95)).isRelease)
     }
 
-    /// Its tap may come while the hold is under way: it's the release
-    /// there, and none is expected after.
-    @Test func aTapWhileTheHoldIsUnderWayIsItsReleaseThere() {
+    /// Its tap may come while the hold is under way, its press's end not yet
+    /// heard: it's the release there, the pinch let go, and its item
+    /// settles; the press's end after it finds no pinch, and no tap is
+    /// expected after.
+    @Test func aTapWhileTheHoldIsUnderWayIsItsReleaseThere() throws {
         var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         let tap = pinches.tapped(at: at(0.8))
         #expect(tap.isRelease)
-        #expect(tap.actions == [])
-        _ = pinches.pressEnded(at: at(0.81))
+        #expect(tap.actions == [.settle])
+        #expect(try #require(tap.ended).outcome == .lift)
+        #expect(pinches.pressEnded(at: at(0.81)) == PluckPinches.Told(why: .noPinch))
         #expect(!pinches.tapped(at: at(0.9)).isRelease)
     }
 
@@ -175,8 +178,9 @@ import Testing
 
     /// Held, then pulled: the item lifts at the hold, a move before the pull
     /// arms pulls nothing, the caller's count arms it two tenths of a second
-    /// after the lift, the next move pulls, and the pinch is one, from its
-    /// touch to its release, its tap its release.
+    /// after the lift, the next move pulls, settling the item as what it
+    /// pulls out spawns, and the pinch is one, from its touch to its
+    /// release, its tap its release.
     @Test func aHoldThenAPullIsOnePinch() throws {
         var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
@@ -184,22 +188,22 @@ import Testing
         #expect(moved(&pinches, 0, 0, 15, at: 0.6) == PluckPinches.Told(why: .notArmedYet))
         #expect(moved(&pinches, 2, 3, 35, at: 0.65) == PluckPinches.Told(why: .notArmedYet))
         #expect(pinches.armPull(at: at(0.7)) == PluckPinches.Told(actions: [.pullArmed], why: .armed))
-        #expect(moved(&pinches, 2, 3, 36, at: 0.72).actions == [.breakFree])
+        #expect(moved(&pinches, 2, 3, 36, at: 0.72).actions == [.breakFree, .settle])
         #expect(moved(&pinches, 40, -90, 120, at: 1).actions == [.carrySpawned])
-        #expect(pinches.tapped(at: at(1.3)).isRelease)
-        let told = pinches.dragEnded(at: at(1.31))
-        #expect(told.actions == [.releaseSpawned, .settle])
+        let told = pinches.dragEnded(at: at(1.3))
+        #expect(told.actions == [.releaseSpawned])
         #expect(told.ended == nil)
         #expect(told.countdowns == [])
-        let account = try #require(pinches.pressEnded(at: at(1.32)).ended)
+        let account = try #require(pinches.pressEnded(at: at(1.31)).ended)
+        #expect(pinches.tapped(at: at(1.32)).isRelease)
         #expect(account.outcome == .pull)
         #expect(account.ending == .letGo)
-        #expect(account.lasted == .seconds(1.32))
+        #expect(account.lasted == .seconds(1.31))
         #expect(account.heldAfter == .seconds(0.5))
         #expect(account.armedAfter == .seconds(0.7))
         #expect(account.pulledAfter == .seconds(0.72))
-        #expect(account.pressEndedAfter == .seconds(1.32))
-        #expect(account.settledAfter == .seconds(1.31))
+        #expect(account.pressEndedAfter == .seconds(1.31))
+        #expect(account.settledAfter == .seconds(0.72))
         #expect(account.dragReportedAfter == .seconds(0.6))
         #expect(account.moved == SIMD3(40, -90, 120))
         let farthest: Double = (1600 + 8100 + 14400 as Double).squareRoot()
@@ -214,8 +218,8 @@ import Testing
         var pinches = PluckPinches(tuning: .firstShipped)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
-        #expect(moved(&pinches, 0, 0, 40, at: 0.75).actions == [.pullArmed, .breakFree])
-        #expect(pinches.armPull(at: at(0.76)) == PluckPinches.Told(why: .armingNotDue))
+        #expect(moved(&pinches, 0, 0, 40, at: 0.75).actions == [.pullArmed, .breakFree, .settle])
+        #expect(pinches.armPull(at: at(0.76)) == PluckPinches.Told(why: .notLifted))
     }
 
     /// Before its two tenths are up, neither the count nor the drag arms the
@@ -327,9 +331,9 @@ import Testing
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
-        #expect(moved(&pinches, 0, 0, 40, at: 0.75).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 0, 40, at: 0.75).actions == [.breakFree, .settle])
         let told = pinches.itemWent(at: at(0.9))
-        #expect(told.actions == [.cancelSpawn, .settle])
+        #expect(told.actions == [.cancelSpawn])
         #expect(told.why == .itemWent)
         #expect(told.countdowns == [.stopHold, .stopArming])
         let account = try #require(told.ended)

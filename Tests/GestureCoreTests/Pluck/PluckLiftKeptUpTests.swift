@@ -28,7 +28,7 @@ import Testing
     /// The press ending first, then the tap: the tap settles it.
     @Test func thePressThenTheTapSettles() throws {
         var pinches = lifted()
-        #expect(pinches.pressEnded(at: at(0.9)) == PluckPinches.Told(why: .liftOutlivesItsPress))
+        #expect(pinches.pressEnded(at: at(0.9)) == PluckPinches.Told(why: .liftOutlivesItsPress, countdowns: [.startQuiet(.seconds(0.5))]))
         #expect(pinches.isKeptUpPastItsPress)
         let tap = pinches.tapped(at: at(0.91))
         #expect(tap.isRelease)
@@ -36,19 +36,17 @@ import Testing
         #expect(try #require(tap.ended).outcome == .lift)
     }
 
-    /// The tap first, then the press ending: the press's end settles it,
-    /// the tap having said the pinch was let go.
-    @Test func theTapThenThePressSettles() throws {
+    /// The tap first, its press's end not yet heard: the tap is the pinch
+    /// let go, so it settles, and the press's end after it finds no pinch.
+    @Test func theTapThenThePressSettlesAtTheTap() throws {
         var pinches = lifted()
         let tap = pinches.tapped(at: at(0.9))
         #expect(tap.isRelease)
-        #expect(tap.actions == [])
-        let told = pinches.pressEnded(at: at(0.91))
-        #expect(told.actions == [.settle])
-        #expect(told.why == .releasedByItsTap)
-        let account = try #require(told.ended)
+        #expect(tap.actions == [.settle])
+        let account = try #require(tap.ended)
         #expect(account.outcome == .lift)
-        #expect(account.settledAfter == .seconds(0.91))
+        #expect(account.settledAfter == .seconds(0.9))
+        #expect(pinches.pressEnded(at: at(0.91)) == PluckPinches.Told(why: .noPinch))
         #expect(!pinches.tapped(at: at(0.95)).isRelease)
     }
 
@@ -68,11 +66,12 @@ import Testing
         #expect(pinches.press == nil)
     }
 
-    /// A pinch elsewhere leaves alone one a gesture still has, and does
-    /// nothing with no pinch here.
+    /// A pinch elsewhere leaves alone one a gesture still has and has spoken
+    /// within the quiet, the lift counting, and does nothing with no pinch
+    /// here.
     @Test func aPinchElsewhereLeavesAHeldPinchAlone() {
         var held = lifted()
-        #expect(held.pinchBeganElsewhere(at: at(1)) == PluckPinches.Told(why: .toldAlready))
+        #expect(held.pinchBeganElsewhere(at: at(0.9)) == PluckPinches.Told(why: .toldAlready))
         #expect(held.press?.isLifted == true)
 
         var dragged = lifted()
@@ -120,15 +119,16 @@ import Testing
         #expect(pinches.containerScrolled(at: at(0.7)) == PluckPinches.Told(why: .toldAlready))
     }
 
-    /// A scroll leaves a pull under way, or a lift the tuning keeps, up: 40
-    /// pt from the touch breaks free at 1,350 pt to the meter, past 2.5 cm's
-    /// 33.75.
+    /// A scroll leaves a pull under way, whose item settled as it broke
+    /// free, to carry on, and a lift the tuning keeps up: 40 pt from the
+    /// touch breaks free at 1,350 pt to the meter, past 2.5 cm's 33.75.
     @Test func aScrollLeavesAPullOrATunedLiftUp() {
         var pulling = lifted()
         _ = pulling.armPull(at: at(0.7))
         _ = pulling.dragMoved(SIMD3(0, 0, 40), pointsPerMeter: pointsPerMeter, at: at(0.8))
-        #expect(pulling.containerScrolled(at: at(0.9)) == PluckPinches.Told(why: .scrollLeftTheItemUp))
+        #expect(pulling.containerScrolled(at: at(0.9)) == PluckPinches.Told(why: .toldAlready))
         #expect(pulling.press?.isPulling == true)
+        #expect(pulling.press?.isLifted == false)
 
         var kept = lifted(PluckTuning(scrollSettlesLiftedItem: false))
         #expect(kept.containerScrolled(at: at(0.6)) == PluckPinches.Told(why: .scrollLeftTheItemUp))
