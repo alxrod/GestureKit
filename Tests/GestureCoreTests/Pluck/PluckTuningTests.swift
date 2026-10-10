@@ -60,6 +60,10 @@ import Testing
         #expect(tuning.depthGrowsTowardViewer)
         #expect(tuning.depthScale == 1)
         #expect(tuning.stopsScrollUnderLiftedItem)
+        #expect(tuning.givesLiftBackToScroll)
+        #expect(tuning.holdStillnessAlongScroll == 10)
+        #expect(tuning.holdWatchesScrollOffset)
+        #expect(tuning.scrollOffsetStillness == 1)
         #expect(tuning.scrollSettlesLiftedItem)
         #expect(!tuning.pressEndSettlesLiftedItem)
         #expect(tuning.releaseTapGrace == 1)
@@ -88,17 +92,19 @@ import Testing
         #expect(tuning.pullRule == .outOfThePlane(depthPerDrift: 0.5))
         #expect(tuning.pullOrigin == .touch)
         #expect(tuning.pressEndSettlesLiftedItem)
-        #expect(tuning.tunedValues.count == 7)
+        #expect(tuning.tunedValues.count == 8)
     }
 
     /// The pluck as Alex tried it on October 9, which spawned its item the
-    /// instant it lifted, and lifted items under slow scrolls, is five values
+    /// instant it lifted, and lifted items under slow scrolls, is six values
     /// away: a half-second hold, its stillness along the scroll the same as
-    /// any way's, its scroll offset unwatched, a 6 mm pull, and no follow.
+    /// any way's, its scroll offset unwatched, a 6 mm pull, no follow, and a
+    /// held item keeping every move.
     @Test func theLooseTuning() {
         let tuning = PluckTuning.loose
         #expect(tuning.tunedValues.keys.sorted() == [
-            "breakFreeDistance", "followShare", "holdDuration", "holdStillnessAlongScroll", "holdWatchesScrollOffset",
+            "breakFreeDistance", "followShare", "givesLiftBackToScroll", "holdDuration", "holdStillnessAlongScroll",
+            "holdWatchesScrollOffset",
         ])
         #expect(tuning.holdTime == .seconds(0.5))
         #expect(abs(tuning.breakFreeThreshold(pointsPerMeter: 1360) - 8.16) < 1e-9)
@@ -131,7 +137,7 @@ import Testing
             scrollOffsetStillness: 3, pullArmDelay: 0.3, dragStartDistance: 0, breakFreeDistance: 0.03,
             followShare: 0.3, followCap: 12, pullDepthPerDrift: 0, pullsAnyDirection: false, measuresPullFromLift: false, measuresPullFromArming: true,
             depthGrowsTowardViewer: false, depthScale: 2,
-            stopsScrollUnderLiftedItem: false, givesLiftBackToScroll: true, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
+            stopsScrollUnderLiftedItem: false, givesLiftBackToScroll: false, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
             releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false, pushTowardViewer: 60,
             liftScale: 1.12, liftDepth: 48
         )
@@ -294,13 +300,13 @@ import Testing
         #expect(moved(&pinches, 0, 0, 54, at: 0.9).actions == [.breakFree])
     }
 
-    /// The default takes a move across the container, as far as 2.5 cm;
+    /// The default takes a move across the scroll, as far as 2.5 cm;
     /// out of the plane, as first shipped, turns down one drifting far
     /// across, which toward the viewer takes.
     @Test func thePullRuleIsTheTunings() {
         var any = liftedAndArmed(PluckTuning())
-        #expect(moved(&any, 0, 33.7, 0, at: 0.75).actions == [])
-        #expect(moved(&any, 0, 33.8, 0, at: 0.8).actions == [.breakFree])
+        #expect(moved(&any, 33.7, 0, 0, at: 0.75).actions == [])
+        #expect(moved(&any, 33.8, 0, 0, at: 0.8).actions == [.breakFree])
         var slanted = liftedAndArmed(.towardTheViewerFromTheTouch)
         #expect(moved(&slanted, 0, 30, 0, at: 0.8).actions == [])
         #expect(moved(&slanted, 0, 200, 40, at: 0.85).actions == [])

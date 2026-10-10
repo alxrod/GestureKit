@@ -28,15 +28,16 @@
 /// - **Lifted, it's held.** Each move of the hand draws the item a little
 ///   along with it, from where it stood as it lifted, on its tether
 ///   (`stretch`, `follow`, `PluckTether`), and says how far the hand has
-///   gone toward breaking it free. Should the tuning give such a pinch
-///   back to the scroll (`PluckTuning.givesLiftBackToScroll`), a move
-///   mostly along the scroll settles the item, and the pinch is a scroll
-///   (`StayDown.givenBackToTheScroll`).
+///   gone toward breaking it free. A move mostly along the scroll, by
+///   default, gives the pinch back to it: the item settles, and the pinch
+///   is a scroll (`PluckTuning.givesLiftBackToScroll`,
+///   `StayDown.givenBackToTheScroll`), so an item can't be pulled out
+///   mostly along the scroll.
 /// - **The pull arms** `pullArmDelay` after the lift (`armPull()`), the
 ///   least time the item shows lifted.
 /// - **It breaks free** once armed, with the first move the pull rule
-///   takes, by default 2.5 cm any way from where the pinch stood as its
-///   item lifted (`liftPoint`), so a hand that drifted during the hold
+///   takes, by default 2.5 cm any other way from where the pinch stood as
+///   its item lifted (`liftPoint`), so a hand that drifted during the hold
 ///   doesn't break it free the instant it arms, and one that came out as
 ///   the item lifted catches up as the pull arms; or, as the tuning says,
 ///   from where it stood as the pull armed (`armingPoint`), or from where it

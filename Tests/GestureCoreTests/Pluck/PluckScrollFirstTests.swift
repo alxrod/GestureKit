@@ -6,8 +6,10 @@ import Testing
 /// pluck." Before the hold, a move of 10 pt along the scroll, a move of the
 /// container's scroll offset past a point, or its scroll view scrolling,
 /// makes the pinch a scroll for good; across the scroll and in depth the
-/// hold allows 40 pt, for a fresh pinch's settling. The quarter-second lift,
-/// the sticky stage, the break-free, and the hand-off are as they were.
+/// hold allows 40 pt, for a fresh pinch's settling. Lifted, a move mostly
+/// along the scroll gives the pinch back to it. The quarter-second lift, the
+/// sticky stage, the break-free any other way, and the hand-off are as they
+/// were.
 @Suite struct PluckScrollFirstTests {
     let start = ContinuousClock.now
     let pointsPerMeter = 1360.0
@@ -181,22 +183,23 @@ import Testing
 
     // MARK: Giving a held item's pinch back to the scroll
 
-    /// Lifted, held, at the defaults: a move along the scroll stretches the
-    /// item toward breaking free, as across does.
-    @Test func byDefaultAHeldItemKeepsAMoveAlongTheScroll() {
-        var pinches = pressed()
+    /// With the switch off, as until October 9, a held item keeps a move
+    /// along the scroll, stretching toward breaking free as across.
+    @Test func withTheSwitchOffAHeldItemKeepsAMoveAlongTheScroll() {
+        var pinches = pressed(PluckTuning(givesLiftBackToScroll: false))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         #expect(moved(&pinches, 0, 20, 0, at: 0.35).actions == [])
         #expect(pinches.press?.isLifted == true)
         #expect(pinches.stretch?.reach == 20)
     }
 
-    /// With the switch on, a held item's pinch moved 12 pt along the scroll
-    /// from where it lifted, 3 across and in depth, is given back: the item
+    /// By default, a held item's pinch moved 12 pt along the scroll from
+    /// where it lifted, 3 across and in depth, is given back: the item
     /// settles, so the container's scroll comes back on, and the pinch is a
     /// scroll for the rest of it, its release no tap.
-    @Test func theSwitchGivesAMoveAlongTheScrollBack() throws {
-        var pinches = pressed(PluckTuning(givesLiftBackToScroll: true))
+    @Test func aHeldItemGivesAMoveAlongTheScrollBack() throws {
+        #expect(PluckTuning().givesLiftBackToScroll)
+        var pinches = pressed()
         _ = moved(&pinches, 5, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         let back = moved(&pinches, 5, 12, 3, at: 0.3)
@@ -212,18 +215,18 @@ import Testing
         #expect(pinches.tapped(at: at(0.72)).isRelease)
     }
 
-    /// The switch gives back only a move mostly along the scroll: a pull
-    /// toward the viewer drifting down, or one across, stays the item's, and
-    /// breaks it free.
-    @Test func theSwitchKeepsAPullThatsMostlyNotAlongTheScroll() {
-        var toward = pressed(PluckTuning(givesLiftBackToScroll: true))
+    /// Only a move mostly along the scroll is given back: a pull toward the
+    /// viewer drifting down, or one across, stays the item's, and breaks it
+    /// free.
+    @Test func aPullThatsMostlyNotAlongTheScrollStaysTheItems() {
+        var toward = pressed()
         _ = toward.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = toward.armPull(at: at(0.45))
         #expect(moved(&toward, 0, 12, 10, at: 0.5).actions == [])
         #expect(toward.press?.isLifted == true)
         #expect(moved(&toward, 0, 16, 31, at: 0.6).actions == [.breakFree])
 
-        var across = pressed(PluckTuning(givesLiftBackToScroll: true))
+        var across = pressed()
         _ = across.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = across.armPull(at: at(0.45))
         #expect(moved(&across, 34, 5, 0, at: 0.6).actions == [.breakFree])

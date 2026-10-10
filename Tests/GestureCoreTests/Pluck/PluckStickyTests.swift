@@ -79,16 +79,16 @@ import Testing
         #expect(pinches.stretch == nil)
         #expect(pinches.follow == .zero)
 
-        let first = moved(&pinches, 0, 15, 0, at: 0.3)
+        let first = moved(&pinches, 15, 0, 0, at: 0.3)
         #expect(first == PluckPinches.Told(why: .notArmedYet))
         let held = try #require(pinches.stretch)
         #expect(held.reach == 15)
         #expect(abs(held.needs - 34) < 1e-9)
         // 7.5 · 20 / 27.5: a little over a third of the hand's 15 pt.
-        #expect(isClose(held.follow, SIMD3(0, 150.0 / 27.5, 0)))
+        #expect(isClose(held.follow, SIMD3(150.0 / 27.5, 0, 0)))
         #expect(pinches.follow == held.follow)
 
-        let armed = moved(&pinches, 0, 30, 0, at: 0.5)
+        let armed = moved(&pinches, 30, 0, 0, at: 0.5)
         #expect(armed.actions == [.pullArmed])
         guard case .notAPull(let judgement) = armed.why else {
             Issue.record("expected the item held, got \(armed.why)")
@@ -97,7 +97,7 @@ import Testing
         #expect(judgement.verdict == .tooShort)
         #expect(judgement.description == "too short, 30.0 pt from the touch (0.0 deep, 30.0 across), needs 34.0 pt")
         // 15 · 20 / 35: the next 15 pt of the hand draw it 3 pt more.
-        #expect(isClose(pinches.follow, SIMD3(0, 300.0 / 35, 0)))
+        #expect(isClose(pinches.follow, SIMD3(300.0 / 35, 0, 0)))
         #expect(pinches.stretch?.reach == 30)
         #expect(pinches.press?.isLifted == true)
     }
@@ -115,9 +115,9 @@ import Testing
         #expect(pinches.stretch?.reach == 0.5)
         _ = moved(&pinches, 20, 0, 0, at: 0.35)
         #expect(pinches.follow == .zero)
-        _ = moved(&pinches, 20, 10, 0, at: 0.4)
+        _ = moved(&pinches, 20, 0, 10, at: 0.4)
         #expect(pinches.follow.x == 0)
-        #expect(pinches.follow.y > 0 && pinches.follow.y < 5)
+        #expect(pinches.follow.z > 0 && pinches.follow.z < 5)
     }
 
     /// A hand that has pinched and holds still, settling and trembling a few
@@ -125,7 +125,7 @@ import Testing
     @Test func aStillHandNeverBreaksFree() throws {
         var pinches = liftedAndArmed()
         var t = 0.5
-        for (x, y, z) in [(3.0, 15.0, 0.0), (5, 17, 4.2), (4, 16, 0), (6, 18, 4.2), (5, 16, 8.4), (4, 17, 4.2)] {
+        for (x, y, z) in [(15.0, 3.0, 0.0), (17, 5, 4.2), (16, 4, 0), (18, 6, 4.2), (16, 5, 8.4), (17, 4, 4.2)] {
             #expect(moved(&pinches, x, y, z, at: t).actions == [])
             t += 0.4
         }
@@ -147,9 +147,9 @@ import Testing
         _ = moved(&pinches, 12, 0, 0, at: 0.2)
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = pinches.armPull(at: at(0.45))
-        #expect(moved(&pinches, 12, 33.9, 0, at: 0.6).actions == [])
-        #expect(pinches.follow.y > 9)
-        let free = moved(&pinches, 12, 34, 0, at: 0.65)
+        #expect(moved(&pinches, 45.9, 0, 0, at: 0.6).actions == [])
+        #expect(pinches.follow.x > 9)
+        let free = moved(&pinches, 46, 0, 0, at: 0.65)
         #expect(free.actions == [.breakFree])
         #expect(free.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 34, threshold: 34, verdict: .pulls, origin: .lift)))
         #expect(pinches.stretch == nil)
@@ -158,9 +158,11 @@ import Testing
         #expect(pinches.press?.farthestStretch == 34)
     }
 
-    /// Any way breaks it free: across, up, down, toward the viewer, or away.
-    @Test func itBreaksFreeAnyWay() {
-        for move in [SIMD3(34.0, 0, 0), SIMD3(-34, 0, 0), SIMD3(0, 34, 0), SIMD3(0, -34, 0), SIMD3(0, 0, 34), SIMD3(0, 0, -34), SIMD3(20, 20, 20)] {
+    /// Any way but mostly along the scroll breaks it free: across, toward
+    /// the viewer, or away, or on a slant; mostly up or down gives the pinch
+    /// back to the scroll (`PluckScrollFirstTests`).
+    @Test func itBreaksFreeAnyWayButAlongTheScroll() {
+        for move in [SIMD3(34.0, 0, 0), SIMD3(-34, 0, 0), SIMD3(0, 0, 34), SIMD3(0, 0, -34), SIMD3(20, 20, 20), SIMD3(0, 30, 16)] {
             var pinches = PluckPinches()
             _ = pinches.pressBegan(at: at(0))
             _ = moved(&pinches, 16, 0, 0, at: 0.2)

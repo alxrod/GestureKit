@@ -2,7 +2,7 @@ import Testing
 @testable import GestureCore
 
 /// The pluck as Alex tried it in the lab on October 9 (`PluckTuning.loose`),
-/// still five values away from today's defaults: the hold given up only by
+/// still six values away from today's defaults: the hold given up only by
 /// its scroll view's phase, or a move of 40 pt any way, never by the drag's
 /// first word; and, once the item is lifted and its pull armed, a move of
 /// 6 mm any way from where the pinch stood as it lifted pulls it out, the

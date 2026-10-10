@@ -15,11 +15,12 @@
 /// for good; held a quarter second with none of those, the item lifts and
 /// the container's scroll stops under it; lifted, it
 /// stays in its container, following the hand a little, half of its move at
-/// first and less as it goes on, toward 20 pt, so it feels held; and once
-/// the hand has gone 2.5 cm any way from where it stood as the item lifted,
-/// and two tenths of a second have passed since the lift, the item breaks
-/// free and spawns into the room at the hand, where the pluck's part ends
-/// and a carry's begins (`PluckHandoff`).
+/// first and less as it goes on, toward 20 pt, so it feels held, unless the
+/// hand moves mostly along the scroll, which gives the pinch back to it; and
+/// once the hand has gone 2.5 cm any other way from where it stood as the
+/// item lifted, and two tenths of a second have passed since the lift, the
+/// item breaks free and spawns into the room at the hand, where the pluck's
+/// part ends and a carry's begins (`PluckHandoff`).
 ///
 /// Alex asked for the quarter second and the sticky lift on October 9, after
 /// trying the lab: the half-second hold felt too long, and at the 6 mm pull
@@ -30,8 +31,8 @@
 /// 15 pt, with the press's end settling a lift. The hold watched only the
 /// scroll view's phase and a move of 40 pt any way until Alex found, after
 /// the quarter second, that pinches meant to scroll still lifted their item
-/// and lost the scroll; that's two values away: an along-scroll stillness of
-/// 40 pt, and the scroll offset unwatched.
+/// and lost the scroll; that's three values away: an along-scroll stillness
+/// of 40 pt, the scroll offset unwatched, and no lift given back.
 ///
 /// Distances on the item are in its own points, as a SwiftUI drag reports
 /// them, with +z toward the viewer; the break-free distance is in meters of
@@ -47,11 +48,10 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// offset, and the hold's stillness give the hold up as before, but have
     /// half as long to: a pinch that moves less than the drag's 15 pt start
     /// in its first quarter second, then scrolls, lifts the item it began
-    /// on, which holds the scroll off. Longer keeps such a scroll from
-    /// lifting anything; so may a drag that starts sooner
-    /// (`dragStartDistance`), which hears a smaller move along the scroll,
-    /// or giving the lifted pinch back to the scroll
-    /// (`givesLiftBackToScroll`).
+    /// on, which holds the scroll off, until its move along the scroll gives
+    /// the pinch back to it (`givesLiftBackToScroll`). Longer keeps such a
+    /// scroll from lifting anything; so may a drag that starts sooner
+    /// (`dragStartDistance`), which hears a smaller move along the scroll.
     public var holdDuration: Double
 
     /// How far a pinch may move from where it touched, any way, in the
@@ -226,17 +226,21 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     public var stopsScrollUnderLiftedItem: Bool
 
     /// Whether a lifted item held short of breaking free gives its pinch
-    /// back to the container's scroll as the hand moves mostly along it:
-    /// off by default. On, a move from where the item lifted at least
+    /// back to the container's scroll as the hand moves mostly along it: on
+    /// by default, as "Scrolling always needs to take precedent over pluck",
+    /// Alex said on October 9. A move from where the item lifted at least
     /// `holdStillnessAlongScroll` along the scroll, and twice as far along
     /// it as across it and in depth, settles the item, which turns the
     /// container's scroll on again, and makes the pinch a scroll for the
     /// rest of it, so a scroll begun after a pause as long as the hold
-    /// doesn't pull a card out instead. Whether the scroll view then takes
-    /// up the pinch already under way, its scroll having been off as it
-    /// began, only the headset can tell: if it doesn't, the pinch does
-    /// nothing until it's let go. And an item can no longer be pulled out
-    /// mostly along the scroll.
+    /// doesn't pull a card out instead. So an item can't be pulled out
+    /// mostly along the scroll: up or down out of a grid that scrolls
+    /// vertically; across, toward the viewer, or away, it can.
+    ///
+    /// Whether the scroll view takes up the pinch already under way, its
+    /// scroll having been off as it began, only the headset can tell: if it
+    /// doesn't, the pinch does nothing until it's let go, the next pinch
+    /// scrolling. Off, a held item keeps every move, as until October 9.
     public var givesLiftBackToScroll: Bool
 
     /// Whether the container beginning to scroll settles a lifted item: on
@@ -309,7 +313,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         depthGrowsTowardViewer: Bool = true,
         depthScale: Double = 1,
         stopsScrollUnderLiftedItem: Bool = true,
-        givesLiftBackToScroll: Bool = false,
+        givesLiftBackToScroll: Bool = true,
         scrollSettlesLiftedItem: Bool = true,
         pressEndSettlesLiftedItem: Bool = false,
         releaseTapGrace: Double = 1,
