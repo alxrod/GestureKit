@@ -107,13 +107,15 @@ public struct AutomationEventLog: Sendable, Equatable {
 /// it reads the same with the trace switched off.
 public enum AutomationOutcome {
     /// A pinch on a pluckable item: it broke free, `spawned`; it lifted and
-    /// settled short of that, `lifted`; it was the item's tap, `tapped`; or
-    /// none of those, the grid's scroll, `stayed down`.
+    /// settled short of that, `lifted`; its hold was given up, the grid's
+    /// scroll, `stayed down`, whatever came as it was let go; it was the
+    /// item's tap, `tapped`; or nothing came of it, `nothing`.
     public static func pluck(_ names: [String]) -> String {
         if names.contains("spawned") { return "spawned" }
         if names.contains("lifted") { return "lifted" }
+        if names.contains("stayed down") { return "stayed down" }
         if names.contains("tapped") { return "tapped" }
-        return "stayed down"
+        return "nothing"
     }
 
     /// A pinch on a surface, as `SurfacePress` told it: a tap, a drag

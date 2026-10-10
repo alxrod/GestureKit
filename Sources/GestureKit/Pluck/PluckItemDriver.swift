@@ -588,6 +588,9 @@ final class PluckItemDriver {
             default: why.description
             }
             trace?.event("stays down", "the hold given up: " + reason)
+            #if DEBUG
+            GestureAutomation.shared.heard("pluck", on: setting.title, "stayed down", .string(reason))
+            #endif
         }
     }
 

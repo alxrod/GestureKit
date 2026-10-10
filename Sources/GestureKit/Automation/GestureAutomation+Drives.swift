@@ -30,7 +30,7 @@ extension GestureAutomation {
         },
         "pluck": Drive(
             keys: ["target", "item", "hold", "pull", "pullTime", "carry", "carryTime"],
-            help: "Pinches the item (its title or id), holds it still for hold s (its hold + 0.1), pulls the hand by pull m ([0, 0, 0.05], toward you) over pullTime s (0.4), carries what broke free by carry m over carryTime s (0.4), and lets go. Outcome: spawned, lifted, tapped, or stayed down."
+            help: "Pinches the item (its title or id), holds it still for hold s (its hold + 0.1), pulls the hand by pull m ([0, 0, 0.05], toward you) over pullTime s (0.4), carries what broke free by carry m over carryTime s (0.4), and lets go. Outcome: spawned, lifted, stayed down, tapped, or nothing."
         ) { automation, arguments in try await automation.pluck(arguments) },
         "tap": Drive(
             keys: ["target", "item", "surface", "at"],
@@ -54,7 +54,7 @@ extension GestureAutomation {
         ) { automation, arguments in try await automation.dragSurface(arguments, flick: false) },
         "flick": Drive(
             keys: ["target", "surface", "along", "at", "time"],
-            help: "Flicks a surface along m (0.25) over time s (0.12), let go on the move. Outcome: scroll, coasting if it coasts."
+            help: "Flicks a surface along m (0.25) over time s (0.12), let go on the move, which the app may coast on. Outcome: scroll."
         ) { automation, arguments in try await automation.dragSurface(arguments, flick: true) },
         "pickup": Drive(
             keys: ["target", "surface", "by", "at", "time"],
@@ -511,7 +511,8 @@ extension GestureAutomation {
             "surface": .string(target),
             "reported": .array(names.map { .string($0) }),
         ]
-        if let ended = log.lastDetail(of: "endScroll", from: "press", on: target) { result["coasting"] = ended["coasting"] ?? .null }
+        // A scroll let go may coast, as the app decides; one cancelled stops.
+        if let ended = log.lastDetail(of: "endScroll", from: "press", on: target) { result["letGo"] = ended["coasting"] ?? .null }
         if let tap = log.lastDetail(of: "tap", from: "press", on: target) { result["tappedAt"] = tap["along"] ?? .null }
         if let carried = log.lastDetail(of: "moveCarry", from: "press", on: target) { result["handMoved"] = carried["handMoved"] ?? .null }
         return GestureAutomationAnswer(AutomationOutcome.surface(names), .object(result))
