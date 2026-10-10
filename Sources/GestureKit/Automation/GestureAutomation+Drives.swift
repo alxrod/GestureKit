@@ -50,7 +50,7 @@ extension GestureAutomation {
         ) { automation, arguments in try await automation.place(arguments) },
         "drag": Drive(
             keys: ["target", "surface", "along", "across", "at", "time"],
-            help: "Drags on a surface (the only one), from at m (0.1), along m (0.3) and across m up (0), over time s (0.6), and lets go. Outcome: scroll, drag along, or drag across."
+            help: "Drags on a surface (the only one), from at m (0.1), along m (0.3) and across m up (0), over time s (0.6), comes to rest for 0.2 s, and lets go. Outcome: scroll, drag along, or drag across."
         ) { automation, arguments in try await automation.dragSurface(arguments, flick: false) },
         "flick": Drive(
             keys: ["target", "surface", "along", "at", "time"],
@@ -106,12 +106,21 @@ extension GestureAutomation {
         let carryTime = try arguments.number("carryTime") ?? 0.4
         let item = PinchStandIn.Adapter.pluckItem(title)
 
-        let start = ContinuousClock.now
+        let pressed = ContinuousClock.now
         PinchStandIn.shared.step(item, .pressDown)
-        await automationPause(until: hold, from: start)
-        var path = AutomationPath.steps(from: .zero, to: pull, over: pullTime).map { AutomationPath.Step(time: hold + $0.time, point: $0.point) }
+        await automationPause(until: hold, from: pressed)
+        // A hand that holds for the lift waits to see it before it pulls,
+        // however late its count comes on a busy main actor.
+        if hold >= holdDuration {
+            let deadline = ContinuousClock.now + .seconds(1.5)
+            while !log.contains("lifted", from: "pluck", on: title), ContinuousClock.now < deadline {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        let start = ContinuousClock.now
+        var path = AutomationPath.steps(from: .zero, to: pull, over: pullTime)
         if carry != .zero {
-            path += AutomationPath.steps(from: pull, to: pull + carry, over: carryTime).map { AutomationPath.Step(time: hold + pullTime + $0.time, point: $0.point) }
+            path += AutomationPath.steps(from: pull, to: pull + carry, over: carryTime).map { AutomationPath.Step(time: pullTime + $0.time, point: $0.point) }
         }
         // The drag speaks as SwiftUI's would: only once the hand has gone
         // its start for the stage the pinch is in, held back or brought
@@ -136,6 +145,9 @@ extension GestureAutomation {
         PinchStandIn.shared.step(item, .pressUp)
         PinchStandIn.shared.step(item, .tapped)
         await untilIdle(ear, atMost: 1.5)
+        // The grid's scroll view, given its scroll back, takes a frame or two.
+        await untilIdle(kind: .pluckContainer, atMost: 1)
+        try? await Task.sleep(for: .milliseconds(200))
 
         let names = log.names(from: "pluck", on: title)
         var result: [String: AutomationJSON] = [
@@ -400,7 +412,14 @@ extension GestureAutomation {
             await automationPause(until: 0.03 + step.time, from: start)
             PinchStandIn.shared.step(.surfacePress, .moved(points: AutomationPath.points(ofMeters: step.point), touch: touch), named: name)
         }
-        if !flick { try? await Task.sleep(for: .milliseconds(30)) }
+        if !flick {
+            // A drag, unlike a flick, comes to rest before it's let go.
+            let end = AutomationPath.points(ofMeters: SIMD3(along, across, 0))
+            for step in AutomationPath.held(at: end, for: 0.2, wavering: 0) {
+                await automationPause(until: 0.03 + time + step.time, from: start)
+                PinchStandIn.shared.step(.surfacePress, .moved(points: step.point, touch: touch), named: name)
+            }
+        }
         PinchStandIn.shared.step(.surfacePress, .released, named: name)
         return await surfaceAnswer(ear, name: name)
     }
@@ -554,7 +573,7 @@ extension GestureAutomation {
         let firstItem = itemTitlesMade().first
         let surfaces = PinchStandIn.shared.listening.filter { $0.adapter == .surfacePress }.map { $0.name ?? "unnamed" }.sorted()
         let tabs = PinchStandIn.shared.listening.filter { $0.adapter == .holdWatch }.map { $0.name ?? "unnamed" }.sorted()
-        let handleNames = liveHandles().filter(\.entity.isEnabled).map(\.name)
+        let handleNames = liveHandles().filter(\.entity.isEnabledInHierarchy).map(\.name)
         let panelNames = livePanels().map(\.name)
 
         var drives: [AutomationJSON] = []
@@ -599,7 +618,7 @@ extension GestureAutomation {
             await drive("panel", panel, ["command": "place", "panel": .string(panel)], accepting: ["placed"])
         }
         let failed = drives.filter { $0["passed"] != true }.count
-        return GestureAutomationAnswer(failed == 0 ? "passed" : "failed", [
+        return GestureAutomationAnswer(drives.isEmpty ? "nothing to drive" : failed == 0 ? "passed" : "failed", [
             "drives": .array(drives),
             "passed": .number(Double(drives.count - failed)),
             "failed": .number(Double(failed)),
@@ -747,7 +766,7 @@ extension GestureAutomation {
             var object: [String: AutomationJSON] = [
                 "id": .string(name),
                 "entity": .string(entity.name),
-                "enabled": .bool(entity.isEnabled),
+                "enabled": .bool(entity.isEnabledInHierarchy),
                 "age": .number((now - since) / .seconds(1), decimals: 1),
                 "default": "carry",
             ]
@@ -758,7 +777,7 @@ extension GestureAutomation {
             return .object(object)
         }
         let panelList: [AutomationJSON] = livePanels().map { name, _, entity in
-            ["id": .string(name), "at": .vector(entity.position(relativeTo: nil)), "enabled": .bool(entity.isEnabled), "default": "place"]
+            ["id": .string(name), "at": .vector(entity.position(relativeTo: nil)), "enabled": .bool(entity.isEnabledInHierarchy), "default": "place"]
         }
         return [
             "grids": ears(.pluckContainer, default: "scroll"),

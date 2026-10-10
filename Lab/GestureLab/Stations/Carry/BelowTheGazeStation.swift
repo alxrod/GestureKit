@@ -36,6 +36,10 @@ final class BelowTheGazeStation: LabStation {
     /// doesn't.
     @ObservationIgnored private var placedWith: PlacementTuning?
     @ObservationIgnored private var placing: Task<Void, Never>?
+    /// Why the panel was to be placed before the space had made it, as when
+    /// the space's task asks first, which it does in the simulator, where
+    /// head tracking returns at once.
+    @ObservationIgnored private var placementWaiting: String?
 
     static func registerComponents() {
         GrabHandle.registerComponents()
@@ -67,12 +71,19 @@ final class BelowTheGazeStation: LabStation {
         panel = entity
         self.handle = handle
         placedWith = nil
+        if let reason = placementWaiting {
+            placementWaiting = nil
+            placeBelowTheGaze(because: reason)
+        }
     }
 
     /// Places the panel below the gaze, waiting for world tracking to say
     /// where the head is should it be starting, traced unless `quietly`.
     func placeBelowTheGaze(because reason: String, quietly: Bool = false) {
-        guard let panel else { return }
+        guard let panel else {
+            placementWaiting = reason
+            return
+        }
         let tuning = placement.tuning
         placing?.cancel()
         placing = Task {
