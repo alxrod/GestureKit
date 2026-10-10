@@ -21,13 +21,18 @@ struct PluckLabCard: Identifiable, Equatable {
 /// held still a quarter second, an item lifts and the scroll stops, until
 /// the hand moves mostly up or down, which gives the pinch back to it; lifted, it follows the hand a little, held to its
 /// place, until the hand has gone 2.5 cm, when it breaks free and spawns as
-/// a card at the hand. From there the pluck's part is over: the same pinch
-/// carries the card by the carry's own rules, 1:1, clear of the head, and
-/// the card faces you through the facing system; once let go, it's carried
-/// by the grab handle under it, as any carried panel.
+/// a card at the hand, the item settling back into the grid. From there the
+/// pluck's part is over: the same pinch carries the card by the carry's own
+/// rules, 1:1, clear of the head, and the card faces you through the facing
+/// system; once let go, it's carried by the grab handle under it, as any
+/// carried panel.
 /// Every pinch is traced, each word with why it did what it did, and the
 /// grid's own scrolls apart, so one pinch's timeline says whether a scroll
-/// lifted, how far the held item stretched, and when it broke free.
+/// lifted, how far the held item stretched, and when it broke free. Under
+/// the grid, a status line says whether the scroll is on or held, by which
+/// item and since when, and what pinch is under way, and shows in red the
+/// last alarm, raised should the scroll stay held with no pinch backing it,
+/// as Alex found on October 9, or the container's safety net let it go.
 @MainActor @Observable
 final class PluckStation: LabStation {
     let id = "pluck"
@@ -243,7 +248,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand, the item settling back into the grid. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. Let go of a lifted item without moving and it settles within half a second, so the next pinch scrolls; hold it perfectly still that long and it settles too. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off. Under the grid, the status line says whether the scroll is on or held, by which item and since when, and the pinch under way: after any pluck, lift, or scroll, it should read Scroll on within a second of letting go. A red alarm there and in the trace means the scroll stayed held with no pinch under way past half a second, or the safety net had to let it go a second after hearing nothing; its trace line has the state and the last ten things the grid heard.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))

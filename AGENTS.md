@@ -61,8 +61,10 @@ the order the areas arrive in.
     header.
   - `PinchStandIn`, DEBUG only, behind `@_spi(PinchStandIn)`: a hand's
     stand-in, whose steps `.surfacePress`, `.holdWatch`, and
-    `.grabHandleCarry` take as their own drag's words while it listens, for
-    the lab's loads (see "Measuring the lab").
+    `.grabHandleCarry` take as their own drag's words while it listens, and
+    a pluckable item, by its title, and its container take as their
+    gestures' and scroll view's words (`PluckStep`), for the lab's loads
+    (see "Measuring the lab").
   - `TuningStore`: a tuning tuned live, saved in `UserDefaults` under a
     namespace; a set that changes nothing tells no one.
   - `TuningPanel`: any tuning's sliders and switches, Defaults, and Copy
@@ -185,7 +187,12 @@ stand in for a hand (`LabLoad`):
   for 2 s, let go, and again: `surface`, a drag along the press's surface
   through `.surfacePress`; `tab`, a hold on the press's tab through
   `.holdWatch`; and `handle`, the carry and face station's middle panel
-  carried round a circle through `.grabHandleCarry`. What a load changes stays, as a
+  carried round a circle through `.grabHandleCarry`. And `stuck`, with
+  `-station pluck`: the pluck's end words said through `.pluckable` and
+  `.pluckContainer` by the stand-in, in the orders that held its grid's
+  scroll before October 9's fix and two that never did, each on an item of
+  its own, logging the container's status at once, 0.6 s, and 1.2 s after
+  each ("Lab load stuck: …"), once through. What a load changes stays, as a
   hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
   `switch` the station it chose last remembered.
 - `-labTracing off` starts with the whole lab's tracing off, so a load

@@ -18,7 +18,9 @@ rather than in the simulator, which can't pinch.
   lifts and the scroll stops, until your hand moves along the scroll, which
   gives the pinch back to it; lifted, it follows your hand a little, held,
   until you've gone about 2.5 cm any other way, when it breaks free into
-  the room at your hand.
+  the room at your hand and the item settles back into the grid. However
+  a pinch's words come, or don't, the grid's scroll is never held for
+  long past it: a safety net lets it go.
   From there the same pinch carries it by Carry's own rules. Mark the
   scroll view `pluckContainer` and each item `pluckable`, and act on what
   each reports: its tap, its lift, where it spawns, and each step of its
