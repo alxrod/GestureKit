@@ -40,6 +40,9 @@ final class PluckStation: LabStation {
     let summary = "Pull a numbered item out of a scrolling grid into the room."
     let tuning = TuningStore<PluckTuning>(namespace: "GestureLab.pluck")
     let carry = TuningStore<CarryTuning>(namespace: "GestureLab.pluck.carry")
+    /// How a hand's pinch is told by hand tracking, should the pluck follow
+    /// a lifted pinch by the hand.
+    let handPinch = TuningStore<HandPinchTuning>(namespace: "GestureLab.pluck.hand")
     let trace = TraceRecorder(logsSummariesPublicly: true)
 
     /// The grid's container: the lifted item and the scroll's hold.
@@ -99,6 +102,7 @@ final class PluckStation: LabStation {
     var tuningContent: some View {
         VStack(spacing: 0) {
             TuningPanel(tuning, title: "Pluck")
+            TuningPanel(handPinch, title: "The hand's pinch, by hand tracking")
             TuningPanel(carry, title: "Carry, once it's out")
         }
     }
@@ -457,6 +461,16 @@ private struct PluckLabSpace: View {
         }
         .task {
             await HeadTracker.shared.start()
+        }
+        // Hand tracking, which asks the person first, only while the pluck
+        // follows a lifted pinch by the hand.
+        .task(id: station.tuning.tuning.tracksLiftedPinchByHand) {
+            if station.tuning.tuning.tracksLiftedPinchByHand {
+                await PinchTracker.shared.start()
+            }
+        }
+        .onChange(of: station.handPinch.tuning, initial: true) { _, tuning in
+            PinchTracker.shared.tuning = tuning
         }
         .onAppear { station.spaceAppeared() }
         .onDisappear { station.spaceDisappeared() }

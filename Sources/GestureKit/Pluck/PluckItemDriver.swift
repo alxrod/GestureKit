@@ -16,6 +16,15 @@ final class PluckItemFollow {
     var offset: SIMD3<Double> = .zero
 }
 
+/// Whether a pluckable item's drag is attached for the pinch under way:
+/// let in at its lift, as the tuning holds it back until then
+/// (`PluckLiftedTracking`), and out again as the pinch ends. Observed apart,
+/// so it draws the item's gestures again only then.
+@MainActor @Observable
+final class PluckDragAttachment {
+    var isAttached = false
+}
+
 /// One pluckable item's pinches, kept in a reference so telling them during
 /// a drag doesn't redraw the item: `PluckPinches` told each word of its
 /// press, its tap, its drag, its counts, and its container, with the time;
@@ -51,6 +60,35 @@ final class PluckItemDriver {
     /// Where the lifted item is drawn as the hand tugs it, which its drawing
     /// alone reads.
     let follow = PluckItemFollow()
+
+    /// Whether its drag is attached for the pinch under way, which its
+    /// gestures alone read.
+    let attachment = PluckDragAttachment()
+
+    /// When the item's button was last pressed, which the hand it came from
+    /// is told by.
+    private var pressAt: ContinuousClock.Instant?
+    /// How the pinch under way is followed once lifted, as its tuning chose,
+    /// from the lift; nil before it, or with the drag from the touch.
+    private var liftedTracking: PluckLiftedTracking?
+    /// Where the drag's first word after the lift stood, from the touch, in
+    /// the item's points, which its words after are measured from, standing
+    /// for where the pinch was as its item lifted; nil until then, or should
+    /// that word come at the held-back start, the drag's start not brought
+    /// down.
+    private var dragOrigin: SIMD3<Double>?
+    /// The drag's words since the lift, and its first's time and distance
+    /// from the touch.
+    private var dragWordsSinceLift = 0
+    private var firstDragAfterLift: (at: ContinuousClock.Instant, distance: Double)?
+    /// The hand followed from the lift: which, the follower's token, and
+    /// where it stood at the lift, in the item's points.
+    private var handFollow: (side: HandSide, token: UUID, atLift: Point3D)?
+    /// The hand's words since the lift, and the drag's while the hand led.
+    private var handWords = 0
+    private var dragWordsUnderTheHand = 0
+    /// Why the hand isn't followed, should hand tracking have been chosen.
+    private var handNotFollowed: String?
 
     private var pinches = PluckPinches()
     /// The setting the last word came with, which the counts and the
@@ -109,6 +147,7 @@ final class PluckItemDriver {
     /// The item's button was pressed, `isPressed`, or let go.
     func pressChanged(_ isPressed: Bool, _ setting: Setting) {
         adopt(setting)
+        if isPressed { pressAt = .now }
         setting.model?.heard(isPressed ? "press down" : "press up", from: self)
         if isPressed {
             apply(pinches.pressBegan(at: .now), word: "press down")
@@ -135,6 +174,16 @@ final class PluckItemDriver {
     /// `location`, both in the item's points.
     func dragMoved(_ translation: SIMD3<Double>, at location: Point3D, _ setting: Setting) {
         adopt(setting)
+        if handFollow != nil {
+            dragHeardUnderTheHand()
+            return
+        }
+        var translation = translation
+        if pinches.liftedAt != nil, let liftedTracking {
+            if dragWordsSinceLift == 0 { firstDragWordAfterTheLift(translation, liftedTracking, setting) }
+            dragWordsSinceLift += 1
+            if let dragOrigin { translation -= dragOrigin }
+        }
         lastLocation = location
         let isFirstWord = !pinches.isDragging
         // The drag's first word of a pinch is kept; the rest note the time.
@@ -167,6 +216,10 @@ final class PluckItemDriver {
     /// The pull's drag ended, let go at `location`, in the item's points.
     func dragEnded(at location: Point3D, _ setting: Setting) {
         adopt(setting)
+        if handFollow != nil {
+            dragHeardUnderTheHand()
+            return
+        }
         setting.model?.heard("drag end", from: self)
         lastLocation = location
         apply(pinches.dragEnded(at: .now), word: "drag end")
@@ -180,7 +233,7 @@ final class PluckItemDriver {
     /// The pull's drag stopped without ending, as when the container's
     /// scroll view takes the pinch: a cancel, should the drag still have it.
     func dragStopped(_ setting: Setting) {
-        guard pinches.isDragging else { return }
+        guard handFollow == nil, pinches.isDragging else { return }
         adopt(setting)
         setting.model?.heard("drag cancelled", from: self)
         apply(pinches.dragCancelled(at: .now), word: "drag cancelled")
@@ -462,6 +515,7 @@ final class PluckItemDriver {
             } else {
                 trace?.event("lift", "no container")
             }
+            beginLiftedTracking(setting)
             if !reportedLift {
                 reportedLift = true
                 setting.perform(.lifted)
@@ -644,6 +698,7 @@ final class PluckItemDriver {
             : "\(account.outcome.rawValue), \(account.ending == .unseen ? "its end unseen" : account.ending.rawValue)"
         let summary = pluckItemAccountLine(account)
         if let trace {
+            if let line = liftedTrackingLine() { trace.event("after the lift", line) }
             trace.event("account", summary)
             trace.finish(outcome)
         } else if let title = setting?.title {
@@ -655,7 +710,154 @@ final class PluckItemDriver {
         handoff = nil
         quietCount?.cancel()
         quietCount = nil
+        endLiftedTracking()
         setting?.model?.pinchEnded(by: self)
+    }
+
+    // MARK: The lifted pinch's tracking
+
+    /// The item lifted: should its tuning hold the drag back, the drag is
+    /// attached, let in or its start brought down; should it follow the
+    /// hand, the hand the press came from is followed from here.
+    private func beginLiftedTracking(_ setting: Setting) {
+        let tracking = (pinches.press?.tuning ?? setting.tuning).liftedTracking
+        guard tracking.heldBack != nil else { return }
+        liftedTracking = tracking
+        if !attachment.isAttached { attachment.isAttached = true }
+        trace?.event("tracking", tracking.description)
+        if tracking.followsTheHand { followTheHand(setting) }
+    }
+
+    /// The drag's first word after the lift, `translation` from the touch:
+    /// traced, with whether its start came down; and, should it come before
+    /// the held-back start where the drag was let in at the lift, taken as
+    /// where the pinch stood as its item lifted, which its words after are
+    /// measured from.
+    private func firstDragWordAfterTheLift(_ translation: SIMD3<Double>, _ tracking: PluckLiftedTracking, _ setting: Setting) {
+        let distance = (translation * translation).sum().squareRoot()
+        let since = pinches.liftedAt.map { pluckItemSeconds(.now - $0) } ?? "?"
+        firstDragAfterLift = (.now, distance)
+        let heldBackStart = (pinches.press?.tuning ?? setting.tuning).heldBackDragStart
+        let cameDown = distance < heldBackStart
+        if tracking.letsDragInAtTheLift, cameDown { dragOrigin = translation }
+        let what = switch tracking.heldBack {
+        case .byItsStart(lowered: true): cameDown
+            ? "its start came down: it hears the pinch from here"
+            : "at its held-back start: its start didn't come down mid-pinch"
+        case .byItsStart(lowered: false): "at its held-back start, as tuned"
+        case .byItsGestureMask: "let in by its mask mid-pinch: it hears the pinch from here"
+        case nil: ""
+        }
+        trace?.event("drag after the lift", String(format: "+%@ s after it, %.1f pt from the touch, %@", since, distance, what))
+    }
+
+    /// Follows the hand the item's press came from, by hand tracking, from
+    /// the lift; or says why not, the drag then following the pinch.
+    private func followTheHand(_ setting: Setting) {
+        let tracker = PinchTracker.shared
+        guard tracker.state.follows else {
+            notFollowingTheHand(tracker.state.description)
+            return
+        }
+        guard let side = tracker.hand(pinchedNearest: pressAt ?? .now),
+              let pinch = tracker.hands[side], let position = pinch.position
+        else {
+            notFollowingTheHand("no hand is pinched")
+            return
+        }
+        guard let atLift = itemPoint(ofHandAt: position, setting) else {
+            notFollowingTheHand("the space isn't open, so the hand can't be placed on the item")
+            return
+        }
+        let token = tracker.follow(side) { [weak self] sample in self?.handSampled(sample) }
+        handFollow = (side, token, atLift)
+        lastLocation = atLift
+        var detail = "follows the \(side.rawValue) hand"
+        if let closedAt = pinch.closedAt, let pressAt {
+            let apart = closedAt < pressAt ? pressAt - closedAt : closedAt - pressAt
+            detail += ", its pinch closed \(pluckItemSeconds(apart)) s \(closedAt < pressAt ? "before" : "after") the press"
+        }
+        trace?.event("hand", detail)
+    }
+
+    private func notFollowingTheHand(_ reason: String) {
+        handNotFollowed = reason
+        trace?.event("hand", "not followed, \(reason): the drag follows the pinch")
+    }
+
+    /// An update of the followed hand: a move, told to the pinch as the
+    /// drag's would be, from where the hand stood at the lift; or its pinch
+    /// opening, or the hand lost, told as the drag's end.
+    private func handSampled(_ sample: PinchTracker.Sample) {
+        guard let setting, let follow = handFollow else { return }
+        if let change = sample.change, change != .closed {
+            stopFollowingTheHand()
+            setting.model?.heard("hand \(change.rawValue)", from: self)
+            apply(pinches.dragEnded(at: .now), word: change == .lost ? "hand lost" : "hand opened")
+            return
+        }
+        guard let position = sample.pinch.position, let point = itemPoint(ofHandAt: position, setting) else { return }
+        lastLocation = point
+        let translation = SIMD3(point.x - follow.atLift.x, point.y - follow.atLift.y, point.z - follow.atLift.z)
+        handWords += 1
+        setting.model?.heard(handWords == 1 ? "hand spoke" : nil, from: self)
+        apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter(setting), at: .now), word: "hand", translation: translation)
+    }
+
+    /// A word of the drag while the hand leads, which it doesn't follow,
+    /// counted and traced once, to say whether the drag let in at the lift
+    /// hears the pinch.
+    private func dragHeardUnderTheHand() {
+        dragWordsUnderTheHand += 1
+        if dragWordsUnderTheHand == 1 {
+            trace?.event("drag after the lift", "the drag spoke, the hand leading")
+        }
+    }
+
+    private func stopFollowingTheHand() {
+        guard let handFollow else { return }
+        PinchTracker.shared.stopFollowing(handFollow.token)
+        self.handFollow = nil
+    }
+
+    /// The pinch is over: what followed it after the lift is traced, the
+    /// hand let go, and the drag out again.
+    private func endLiftedTracking() {
+        stopFollowingTheHand()
+        if attachment.isAttached { attachment.isAttached = false }
+        liftedTracking = nil
+        dragOrigin = nil
+        dragWordsSinceLift = 0
+        firstDragAfterLift = nil
+        handWords = 0
+        dragWordsUnderTheHand = 0
+        handNotFollowed = nil
+    }
+
+    /// What followed the lifted pinch, for the trace's last lines: the hand's
+    /// words, the drag's, and whether the drag spoke after the lift at all.
+    private func liftedTrackingLine() -> String? {
+        guard let liftedTracking else { return nil }
+        var parts = [liftedTracking.description]
+        if handWords > 0 || dragWordsUnderTheHand > 0 {
+            parts.append("the hand spoke \(handWords) times, the drag \(dragWordsUnderTheHand) times beneath it")
+        }
+        if let handNotFollowed { parts.append("the hand not followed: \(handNotFollowed)") }
+        if let firstDragAfterLift {
+            parts.append(String(format: "the drag spoke %d times after the lift, first %.1f pt from the touch", dragWordsSinceLift, firstDragAfterLift.distance))
+        } else if handWords == 0 {
+            parts.append("no drag word came after the lift")
+        }
+        return parts.joined(separator: "; ")
+    }
+
+    /// The hand's place, `position` in meters in the immersive space, as a
+    /// point of the item, through its transform into the space, which a
+    /// drag's location is in; nil with the space closed.
+    private func itemPoint(ofHandAt position: SIMD3<Float>, _ setting: Setting) -> Point3D? {
+        guard let transform = proxy?.transform(in: .immersiveSpace), let inverse = transform.inverse else { return nil }
+        let meters = Point3D(x: Double(position.x), y: Double(-position.y), z: Double(position.z))
+        return setting.metrics.convert(meters, from: .meters).applying(inverse)
     }
 }
 

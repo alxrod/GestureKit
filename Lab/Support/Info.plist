@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>GestureLab follows your pinching hand, should you choose to, as you pull an item out of a grid.</string>
 	<key>NSWorldSensingUsageDescription</key>
 	<string>GestureLab follows where your head is, so what its stations place stands below your gaze and turns to face you.</string>
 	<key>UIApplicationSceneManifest</key>

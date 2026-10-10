@@ -75,6 +75,8 @@ targets:
         # World tracking, for where the head is, so what a station places
         # stands below the gaze and turns to face the person.
         NSWorldSensingUsageDescription: GestureLab follows where your head is, so what its stations place stands below your gaze and turns to face you.
+        # Hand tracking, should the pluck follow a lifted pinch by the hand.
+        NSHandsTrackingUsageDescription: GestureLab follows your pinching hand, should you choose to, as you pull an item out of a grid.
 
 schemes:
   GestureLab:
