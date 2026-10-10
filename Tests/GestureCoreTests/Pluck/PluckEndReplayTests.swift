@@ -123,8 +123,9 @@ import Testing
     }
 
     /// How long after a pinch's last word the replay waits before the next
-    /// pinch: past any quiet the rules may wait for.
-    static let quiet = 2.0
+    /// pinch: past any quiet the rules may wait for, and the safety net's
+    /// three seconds for a scroll kept for a carry.
+    static let quiet = 3.5
 
     // MARK: The courses
 
@@ -177,9 +178,10 @@ import Testing
         }
     }
 
-    /// Whether anything holds the scroll or stays lifted.
+    /// Whether anything holds the scroll or stays lifted: the container, a
+    /// pinch, or what the scroll view is given.
     static func isHeld(_ grid: PluckReplayGrid) -> Bool {
-        grid.container.holdsItsScroll || grid.container.liftedItem != nil || grid.anyPinchHoldsItsItem
+        grid.container.holdsItsScroll || grid.container.liftedItem != nil || grid.anyPinchHoldsItsItem || grid.scrollViewHeldOff
     }
 
     /// Replays `course`, then `endings` in order, then the quiet, then the
@@ -197,12 +199,12 @@ import Testing
         time += quiet
         grid.advance(to: time)
         let heldOnceOver = isHeld(grid)
-        let alarmed = !grid.alarms.isEmpty
+        let alarmed = grid.alarms.contains { $0.kind != .scrollViewNeverTookIt }
         let netLetGo = grid.alarms.contains { $0.kind.letsGo }
 
         // The next pinch: it touches, and the scroll view takes it only if
         // its scroll is on as it touches.
-        let heldAtNextTouch = grid.container.holdsItsScroll
+        let heldAtNextTouch = grid.scrollViewHeldOff
         let item: String? = switch next {
         case .sameItem: "a"
         case .otherItem: "b"

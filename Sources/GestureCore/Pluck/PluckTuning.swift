@@ -301,6 +301,38 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// than a breath. Each time the net lets go, it's traced as an alarm.
     public var unheardHoldRelease: Double
 
+    /// The safety net under a scroll kept held for a pinch whose item has
+    /// settled, as it is through the carry of what broke free, or a lift
+    /// given back to the scroll: how long, in seconds, it may stay held with
+    /// nothing heard from that pinch before the container lets it go: three
+    /// seconds.
+    ///
+    /// Such a pinch has its drag, which ends or is cancelled as it's let go;
+    /// its words are its drag's, which come as the hand moves. Letting the
+    /// scroll go while the pinch is still down is what to avoid: on October
+    /// 10 the grid's scroll view took no pinch after the scroll came back
+    /// on mid-pinch (`scrollComesBackMidPinch`). So this waits longer than
+    /// the net under a lift, past a carry paused to look where to put
+    /// what it carries, and still lets go a scroll whose pinch's end and
+    /// cancel both went unheard.
+    public var unheardScrollHoldRelease: Double
+
+    /// Whether the container's scroll comes back as its lifted item settles
+    /// while the pinch that lifted it is still down, as it breaks free or is
+    /// given back to the scroll: off by default, so it comes back once that
+    /// pinch lets go, its gestures no longer saying they have it.
+    ///
+    /// From October 9 to 10, breaking free brought the scroll back at once,
+    /// mid-pinch, the carry of what spawned going on; after the first pull,
+    /// the grid's scroll view took no pinch, every later scroll told as one
+    /// by the rules, the scroll given on, and the scroll view saying no
+    /// phase and not moving (Alex's clip of October 10). A lift given back
+    /// to the scroll brought it back mid-pinch the same way. On, it does so
+    /// again, to try whether the scroll view takes up a pinch given back to
+    /// it; the pluck station's status line and its alarm "the scroll view
+    /// never took it" say what the scroll view did after.
+    public var scrollComesBackMidPinch: Bool
+
     /// How long, in seconds, after a pinch that lifted its item is over its
     /// item's tap is still taken as its release, which is no tap: a second.
     /// The tap comes as a pinch is let go, before or after its gestures
@@ -361,6 +393,8 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         pressEndSettlesLiftedItem: Bool = false,
         quietRelease: Double = 0.5,
         unheardHoldRelease: Double = 1,
+        unheardScrollHoldRelease: Double = 3,
+        scrollComesBackMidPinch: Bool = false,
         releaseTapGrace: Double = 1,
         holdsFromTheDrag: Bool = false,
         pullDragIsSimultaneous: Bool = true,
@@ -390,6 +424,8 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.pressEndSettlesLiftedItem = pressEndSettlesLiftedItem
         self.quietRelease = quietRelease
         self.unheardHoldRelease = unheardHoldRelease
+        self.unheardScrollHoldRelease = unheardScrollHoldRelease
+        self.scrollComesBackMidPinch = scrollComesBackMidPinch
         self.releaseTapGrace = releaseTapGrace
         self.holdsFromTheDrag = holdsFromTheDrag
         self.pullDragIsSimultaneous = pullDragIsSimultaneous
@@ -438,6 +474,12 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// How long a hold unheard from lasts before the safety net lets it go.
     public var unheardHoldReleaseTime: Duration {
         .seconds(unheardHoldRelease)
+    }
+
+    /// How long a scroll kept for a pinch whose item settled lasts, unheard
+    /// from, before the safety net lets it go.
+    public var unheardScrollHoldReleaseTime: Duration {
+        .seconds(unheardScrollHoldRelease)
     }
 
     /// The break-free distance in the item's points, at `pointsPerMeter`, as
@@ -546,6 +588,8 @@ extension PluckTuning: Tunable {
         .toggle(\.pressEndSettlesLiftedItem, key: "pressEndSettlesLiftedItem", title: "The press's end settles a lifted item"),
         .number(\.quietRelease, key: "quietRelease", title: "A lift kept past its press, unheard, settles after", unit: "s", range: 0.1...3, step: 0.05),
         .number(\.unheardHoldRelease, key: "unheardHoldRelease", title: "Safety net: a hold unheard from goes after", unit: "s", range: 0.25...5, step: 0.05),
+        .number(\.unheardScrollHoldRelease, key: "unheardScrollHoldRelease", title: "Safety net: a scroll kept for a carry, unheard, goes after", unit: "s", range: 0.5...10, step: 0.25),
+        .toggle(\.scrollComesBackMidPinch, key: "scrollComesBackMidPinch", title: "The scroll comes back mid-pinch, as the item settles"),
         .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),
         .toggle(\.holdsFromTheDrag, key: "holdsFromTheDrag", title: "Hold counts from the drag, not a button"),
         .toggle(\.pullDragIsSimultaneous, key: "pullDragIsSimultaneous", title: "Pull drag is simultaneous"),

@@ -3,7 +3,9 @@
 /// A pluckable grid as GestureKit's adapter wires GestureCore together, as
 /// values, for replaying the words a pinch's gestures say in any order: a
 /// container (`PluckContainer`) and its watch (`PluckHoldWatch`) as
-/// `PluckContainerModel` keeps them, and each item's pinches
+/// `PluckContainerModel` keeps them, the watch told the container's hold
+/// after each change and deciding what the scroll view is given, which the
+/// replay keeps with its times (`given`), and each item's pinches
 /// (`PluckPinches`) as its `PluckItemDriver` tells them, the counts each asks
 /// for, and the watch's looks, run on the replay's clock, each action done
 /// as the driver does it: a lift and a settle through the container; a pinch
@@ -27,6 +29,13 @@ struct PluckReplayGrid {
     /// The alarms the watch raised, as the model raises them, the safety
     /// net's among them.
     private(set) var alarms: [PluckHoldWatch<String>.Alarm] = []
+    /// What the scroll view was given, held off or on, each time it changed,
+    /// with when, as `pluckContainer` gives it the watch's hold.
+    private(set) var given: [(at: ContinuousClock.Instant, heldOff: Bool)] = []
+    /// Whether the scroll view is given held off now.
+    var scrollViewHeldOff: Bool { given.last?.heldOff ?? false }
+    /// Whether the safety net is letting a hold go, as the model's flag.
+    private var isLettingGo = false
     /// Each item's pinches, as its driver keeps them; an item that went
     /// comes back with a driver of its own, as a view made again does.
     private(set) var pinches: [String: PluckPinches] = [:]
@@ -50,6 +59,9 @@ struct PluckReplayGrid {
         now = start
         container = PluckContainer(tuning: tuning)
         watch.unheardLimit = tuning.unheardHoldReleaseTime
+        watch.unheardScrollLimit = tuning.unheardScrollHoldReleaseTime
+        watch.scrollComesBackMidPinch = tuning.scrollComesBackMidPinch
+        watchChanged()
     }
 
     /// The time `seconds` into the replay.
@@ -77,7 +89,10 @@ struct PluckReplayGrid {
     /// order, as the driver's and the model's tasks would.
     mutating func advance(to seconds: Double) {
         let target = at(seconds)
+        var looks = 0
         while true {
+            looks += 1
+            precondition(looks < 10_000, "the replay's clock made no progress: holds \(holdDue), arms \(armDue), quiets \(quietDue), the watch at \(String(describing: watch.nextCheck.map { $0 - start })), its verdict \(watch.verdict(at: now)), its disagreement \(watch.disagreement ?? "none"), its ruling \(watch.scrollRulingTitle ?? "none"), lifted \(watch.heldTitle ?? "none"), scroll for \(watch.scrollHeldTitle ?? "none"):\n" + log.suffix(20).joined(separator: "\n"))
             var dues: [(ContinuousClock.Instant, Due)] = holdDue.map { ($0.value, .hold($0.key)) }
                 + armDue.map { ($0.value, .arming($0.key)) }
                 + quietDue.map { ($0.value, .quiet($0.key)) }
@@ -115,6 +130,7 @@ struct PluckReplayGrid {
         let tap = tell(item) { $0.tapped(at: $1) }
         log.append("\(item) tap: \(tap.isRelease ? "release" : "tap"), \(tap.actions)")
         run(tap.countdowns, for: item)
+        reportPinchGoingOn(item)
         for action in tap.actions { perform(action, for: item) }
         if tap.ended != nil { pinched.remove(item) }
         reportPinch(of: item)
@@ -161,8 +177,9 @@ struct PluckReplayGrid {
     mutating func scrollPhase(_ phase: PluckScrollPhase) {
         let wasScrolling = container.phase.isScrolling
         let change = container.scrollPhaseChanged(to: phase, at: now)
-        watch.note("scroll \(phase.rawValue)", at: now)
-        if change.settled != nil { watched { $0.settled(because: "the container's scroll", at: $1) } }
+        watch.scrollViewSaid(phase, at: now)
+        if change.settled != nil { watch.settled(because: "the container's scroll", at: now) }
+        mirror()
         log.append("scroll phase \(phase.rawValue): holds \(container.holdsItsScroll)")
         let began = phase.isScrolling && !wasScrolling
         for item in pinched.sorted() {
@@ -184,11 +201,23 @@ struct PluckReplayGrid {
 
     // MARK: The model's watch
 
-    /// Tells the watch something, and lets the hold go at once should the
-    /// safety net say so, as the model's `watched` does.
-    private mutating func watched(_ change: (inout PluckHoldWatch<String>, ContinuousClock.Instant) -> Void) {
-        change(&watch, now)
-        if case .letGo(let alarm) = watch.verdict(at: now) { letGo(alarm) }
+    /// After the watch was told something: lets a hold go at once should the
+    /// safety net say so, and gives the scroll view the watch's hold, as the
+    /// model's `watchChanged` and `pluckContainer` do.
+    private mutating func watchChanged() {
+        if !isLettingGo, case .letGo(let alarm) = watch.verdict(at: now) { letGo(alarm) }
+        let heldOff = watch.holdsTheScroll
+        if given.last?.heldOff != heldOff {
+            given.append((now, heldOff))
+            log.append("the scroll view given \(heldOff ? "held off" : "on")")
+            watch.scrollGiven(heldOff: heldOff, at: now)
+        }
+    }
+
+    /// Tells the watch the container's hold, as the model's `mirror` does.
+    private mutating func mirror() {
+        watch.container(holds: container.holdsItsScroll, lifted: container.liftedItem, at: now)
+        watchChanged()
     }
 
     /// Does what the watch says now, as the model's look does.
@@ -198,6 +227,7 @@ struct PluckReplayGrid {
         case .letGo(let alarm): letGo(alarm)
         case .fine: break
         }
+        watchChanged()
     }
 
     private mutating func raise(_ alarm: PluckHoldWatch<String>.Alarm) {
@@ -208,10 +238,17 @@ struct PluckReplayGrid {
 
     /// The safety net, as the model's `letGo` does it.
     private mutating func letGo(_ alarm: PluckHoldWatch<String>.Alarm) {
+        isLettingGo = true
+        defer { isLettingGo = false }
         raise(alarm)
+        watch.releaseTheScroll(because: "the safety net", at: now)
         let lifted = container.liftedItem
-        _ = container.settleLiftedItem()
+        if lifted != nil { _ = container.settleLiftedItem() }
+        // The container's state first, so the watch's settle takes no hold
+        // for an item the container no longer has.
+        watch.container(holds: container.holdsItsScroll, lifted: container.liftedItem, at: now)
         watch.settled(because: "the safety net", at: now)
+        mirror()
         if let lifted { containerSettled(lifted) }
     }
 
@@ -270,6 +307,7 @@ struct PluckReplayGrid {
             pinched.insert(item)
             run(told.countdowns, for: item)
             if told.ended == nil {
+                reportPinchGoingOn(item)
                 for action in told.actions { perform(action, for: item) }
             }
             offsetChanged(for: item)
@@ -277,11 +315,26 @@ struct PluckReplayGrid {
             return
         }
         run(told.countdowns, for: item)
+        reportPinchGoingOn(item)
         for action in told.actions { perform(action, for: item) }
         if told.ended != nil {
             pinched.remove(item)
             quietDue[item] = nil
         }
+        reportPinch(of: item)
+    }
+
+    /// The rules told `item`'s pinch as a scroll, as the driver tells the
+    /// model.
+    private mutating func ruledAScroll(_ item: String) {
+        watch.ruledAScroll(on: item, at: now)
+        watchChanged()
+    }
+
+    /// Tells the watch what `item`'s pinch is now before its word's actions,
+    /// should it go on, as the driver's `reportPinchGoingOn` does.
+    private mutating func reportPinchGoingOn(_ item: String) {
+        guard pinches[item]?.press != nil else { return }
         reportPinch(of: item)
     }
 
@@ -299,7 +352,8 @@ struct PluckReplayGrid {
         }
         guard pinch != reported[item] else { return }
         reported[item] = pinch
-        watched { $0.pinch(item, is: pinch, at: $1) }
+        watch.pinch(item, is: pinch, at: now)
+        watchChanged()
     }
 
     private mutating func run(_ countdowns: [PluckPinches.Countdown], for item: String) {
@@ -318,10 +372,15 @@ struct PluckReplayGrid {
         switch action {
         case .lift:
             let change = container.lift(item, at: now)
-            if change.settled != item { watched { $0.lifted(item, title: item, at: $1) } }
+            if change.settled != item { watch.lifted(item, title: item, at: now) }
+            mirror()
             if let displaced = change.settled, displaced != item { containerSettled(displaced) }
         case .settle:
-            if container.settle(item).settled != nil { watched { $0.settled(because: "its pinch", at: $1) } }
+            if container.settle(item).settled != nil { watch.settled(because: "its pinch", at: now) }
+            mirror()
+            if case .givenBackToTheScroll = pinches[item]?.press?.why { ruledAScroll(item) }
+        case .stayDown:
+            ruledAScroll(item)
         default:
             break
         }

@@ -368,6 +368,7 @@ final class PluckItemDriver {
             note(word, told, translation: translation, extra: extra)
             for countdown in told.countdowns { run(countdown) }
             if told.ended == nil {
+                reportPinchGoingOn()
                 for action in told.actions { perform(action, why: told.why) }
             }
             // Where the content stands at the touch, which its moves are
@@ -379,6 +380,7 @@ final class PluckItemDriver {
         }
         note(word, told, translation: translation, extra: extra)
         for countdown in told.countdowns { run(countdown) }
+        reportPinchGoingOn()
         for action in told.actions { perform(action, why: told.why) }
         noteHeld()
         if let ended = told.ended { finish(ended) }
@@ -392,10 +394,20 @@ final class PluckItemDriver {
         let what = tap.isRelease ? "the release of a lift, no tap" : (synthesized ? "a tap, as the drag ended" : "a tap")
         trace?.event("tap", "\(what), \(since)")
         for countdown in tap.countdowns { run(countdown) }
+        reportPinchGoingOn()
         for action in tap.actions { perform(action, why: .releasedByItsTap) }
         if !tap.isRelease { setting?.perform(.tapped) }
         if let ended = tap.ended { finish(ended) }
         showFollow()
+        reportPinch()
+    }
+
+    /// Tells the container's watch what a pinch that goes on is now, before
+    /// what its word does, so the watch knows whether its drag still has it
+    /// as its item settles; a pinch the word ended is told after, once its
+    /// item has settled, so the watch never sees a lifted item with no pinch.
+    private func reportPinchGoingOn() {
+        guard pinches.press != nil else { return }
         reportPinch()
     }
 
@@ -470,6 +482,7 @@ final class PluckItemDriver {
             let change = setting.model?.settle(setting.id, because: why.description)
             if case .givenBackToTheScroll = why {
                 pluckItemLogger.info("The pinch on \(setting.title) was given back to the scroll: \(why.description, privacy: .public)")
+                setting.model?.ruledAScroll(by: self)
             }
             var detail = why.description
             if let held = heldFarthest, !brokeFree {
@@ -479,6 +492,7 @@ final class PluckItemDriver {
             trace?.event("settle", detail)
             reportSettled()
         case .stayDown:
+            setting.model?.ruledAScroll(by: self)
             let reason = switch why {
             case .containerScrolled: "its scroll view scrolled since the touch, a scroll"
             default: why.description

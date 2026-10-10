@@ -65,6 +65,10 @@ the order the areas arrive in.
     a pluckable item, by its title, and its container take as their
     gestures' and scroll view's words (`PluckStep`), for the lab's loads
     (see "Measuring the lab").
+  - `pluckScrollViewProbe`, DEBUG only, in `Sources/GestureKit/Pluck/`:
+    placed inside a pluckable scroll view's content, it reads what the UIKit
+    scroll view behind SwiftUI's has, its scrolling, its pan and the pan's
+    state, for the container's status line and its alarms.
   - `TuningStore`: a tuning tuned live, saved in `UserDefaults` under a
     namespace; a set that changes nothing tells no one.
   - `TuningPanel`: any tuning's sliders and switches, Defaults, and Copy
@@ -192,8 +196,11 @@ stand in for a hand (`LabLoad`):
   `.pluckContainer` by the stand-in, in the orders that held its grid's
   scroll before October 9's fix and two that never did, each on an item of
   its own, logging the container's status at once, 0.6 s, and 1.2 s after
-  each ("Lab load stuck: …"), once through. What a load changes stays, as a
-  hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
+  each ("Lab load stuck: …"); then Alex's clip of October 10: a pluck
+  through its break-free, carry, and release, the card carried by its own
+  grab handle through `.grabHandleCarry`, and pinches told as scrolls, with
+  what the UIKit scroll view has after each step, once through. What a load
+  changes stays, as a hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
   `switch` the station it chose last remembered.
 - `-labTracing off` starts with the whole lab's tracing off, so a load
   measures the gestures with no trace; `on` starts with it on.
