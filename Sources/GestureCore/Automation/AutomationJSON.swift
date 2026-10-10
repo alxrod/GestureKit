@@ -13,7 +13,6 @@ import Foundation
 ///     answer.encoded()   // {"at":[0.1,1.2,-0.9],"ok":true,"outcome":"spawned"}
 ///
 /// Debug builds only, for driving the gestures without a hand.
-@_spi(GestureAutomation)
 public enum AutomationJSON: Sendable, Hashable {
     case null
     case bool(Bool)

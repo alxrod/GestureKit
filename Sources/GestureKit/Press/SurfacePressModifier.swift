@@ -85,6 +85,8 @@ extension View {
     ///     nothing, and the console gets a line only for a pickup or a carry
     ///     the app refused.
     ///   - traceTitle: what each pinch's trace is called.
+    ///   - automationID: what GestureKit's automation drives this surface
+    ///     by, in a debug build; its trace's title unless given.
     ///   - canHold: whether a pinch here holds, held still for
     ///     `holdDuration`.
     ///   - canPickUp: whether a pinch here picks up, held still for
@@ -110,6 +112,7 @@ extension View {
         tuning: SurfacePress.Tuning = .defaults,
         recorder: TraceRecorder? = nil,
         traceTitle: String = "Pinch on a surface",
+        automationID: String? = nil,
         canHold: Bool = false,
         canPickUp: Bool = true,
         dragAlongScrolls: Bool = false,
@@ -127,6 +130,7 @@ extension View {
             tuning: tuning,
             recorder: recorder,
             traceTitle: traceTitle,
+            automationID: automationID,
             canHold: canHold,
             canPickUp: canPickUp,
             dragAlongScrolls: dragAlongScrolls,
@@ -149,6 +153,7 @@ extension View {
         tuning: SurfacePress.Tuning = .defaults,
         recorder: TraceRecorder? = nil,
         traceTitle: String = "Pinch on a surface",
+        automationID: String? = nil,
         canHold: Bool = false,
         canPickUp: Bool = true,
         dragAlongScrolls: Bool = false,
@@ -166,6 +171,7 @@ extension View {
             tuning: tuning,
             recorder: recorder,
             traceTitle: traceTitle,
+            automationID: automationID ?? traceTitle,
             canHold: canHold,
             canPickUp: canPickUp,
             dragAlongScrolls: dragAlongScrolls,
@@ -199,6 +205,8 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     let tuning: SurfacePress.Tuning
     let recorder: TraceRecorder?
     let traceTitle: String
+    /// What GestureKit's automation drives it by, in a debug build.
+    let automationID: String
     let canHold: Bool
     let canPickUp: Bool
     let dragAlongScrolls: Bool
@@ -269,7 +277,14 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
                 pressCancelled(because: "its view went")
             }
             #if DEBUG
-            .modifier(PinchStandInListener(adapter: .surfacePress) { standInStep($0) })
+            .modifier(PinchStandInEar(
+                adapter: .surfacePress,
+                name: automationID,
+                step: { standInStep($0) },
+                isBusy: { pinch.press != nil || pinch.clock != nil },
+                facts: { standInFacts() },
+                recorder: recorder
+            ))
             #endif
     }
 
@@ -372,6 +387,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     private func pickUp(after elapsed: Double) {
         if let reason = pickUpRefusal() {
             pinch.press?.refusePickUp()
+            #if DEBUG
+            GestureAutomation.shared.heard("press", on: automationID, "pickUpRefused", .string(reason))
+            #endif
             if let trace = pinch.trace {
                 trace.event("pickup refused", reason)
             } else {
@@ -415,6 +433,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
     private func pressCancelled(because why: String) {
         guard var cancelled = pinch.press else { return }
         pinch.trace?.event("cancel", why)
+        #if DEBUG
+        GestureAutomation.shared.heard("press", on: automationID, "cancel", .string(why))
+        #endif
         let stage = cancelled.stage
         let actions = cancelled.cancel()
         pinch.press = cancelled
@@ -450,6 +471,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
         let elapsed = pinch.touchedAt.map { (ContinuousClock.now - $0) / .seconds(1) } ?? 0
         for action in actions {
             traceEvent(for: action, of: told, after: elapsed)
+            #if DEBUG
+            GestureAutomation.shared.heardSurfacePress(action, on: automationID)
+            #endif
             let refusal = SurfacePressCarryRefusal()
             perform(SurfacePressEvent(action: action, press: pinch.press ?? told, elapsed: elapsed, carryRefusal: refusal))
             switch action {
@@ -462,6 +486,9 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
                 if let reason = refusal.reason {
                     pinch.press?.refuseCarry()
                     pinch.carryWasRefused = true
+                    #if DEBUG
+                    GestureAutomation.shared.heard("press", on: automationID, "carryRefused", .string(reason))
+                    #endif
                     if let trace = pinch.trace {
                         trace.event("carry refused", reason)
                     } else {
@@ -563,14 +590,29 @@ private struct SurfacePressModifier<HitShape: Shape>: ViewModifier {
 
     #if DEBUG
     /// A step of the hand's stand-in (`PinchStandIn`), as the press's drags
-    /// would tell it: touched 100 pt along, 20 pt down, and moved as it says.
+    /// would tell it: touched where it says, or 100 pt along and 20 pt down,
+    /// and moved as it says.
     private func standInStep(_ step: PinchStandIn.Step) {
         switch step {
-        case .moved(let points, _, _):
-            pressChanged(SurfacePressWord(standingInFor: points))
+        case .moved(let points, _, _, let touch):
+            pressChanged(SurfacePressWord(standingInFor: points, touchedAt: touch))
         case .released:
-            pressEnded(pinch.press == nil ? nil : SurfacePressWord(standingInFor: .zero))
+            pressEnded(pinch.press == nil ? nil : SurfacePressWord(standingInFor: .zero, touchedAt: nil))
         }
+    }
+
+    /// What the press goes by and holds now, for GestureKit's automation.
+    private func standInFacts() -> AutomationJSON {
+        [
+            "pickUpDelay": .number(tuning.pickUpDelay),
+            "holdDuration": .number(tuning.holdDuration),
+            "dragDistance": .number(tuning.dragDistance),
+            "carryDistance": .number(tuning.carryDistance),
+            "canHold": .bool(canHold),
+            "canPickUp": .bool(canPickUp),
+            "dragAlongScrolls": .bool(dragAlongScrolls),
+            "pinched": .bool(pinch.press != nil),
+        ]
     }
     #endif
 
@@ -709,11 +751,12 @@ private struct SurfacePressWord {
     }
 
     #if DEBUG
-    /// A stand-in's word: touched 100 pt along and 20 pt down, the hand at
-    /// the space's origin, and moved `points` since.
-    init(standingInFor points: SIMD3<Double>) {
-        start = CGPoint(x: 100, y: 20)
-        location = CGPoint(x: 100 + points.x, y: 20 + points.y)
+    /// A stand-in's word: touched at `touch`, or 100 pt along and 20 pt
+    /// down, the hand at the space's origin, and moved `points` since.
+    init(standingInFor points: SIMD3<Double>, touchedAt touch: SIMD2<Double>?) {
+        let touch = touch ?? SIMD2(100, 20)
+        start = CGPoint(x: touch.x, y: touch.y)
+        location = CGPoint(x: touch.x + points.x, y: touch.y + points.y)
         translation = Vector3D(x: points.x, y: points.y, z: points.z)
         handStart = .zero
         hand = Point3D(x: points.x, y: points.y, z: points.z)

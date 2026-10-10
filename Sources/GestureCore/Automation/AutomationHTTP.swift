@@ -6,7 +6,6 @@ import Foundation
 /// `Content-Length` says, and one answer, after which the connection
 /// closes. Its parsing is a value, so a request that arrives in pieces is
 /// read again as each comes, and tests feed it any split.
-@_spi(GestureAutomation)
 public struct AutomationHTTPRequest: Sendable, Equatable {
     /// The request's method, uppercased: "GET", "POST".
     public let method: String
@@ -72,7 +71,6 @@ public struct AutomationHTTPRequest: Sendable, Equatable {
 }
 
 /// An answer the automation's server sends: a status and a JSON body.
-@_spi(GestureAutomation)
 public struct AutomationHTTPResponse: Sendable, Equatable {
     public let status: Int
     public let body: Data

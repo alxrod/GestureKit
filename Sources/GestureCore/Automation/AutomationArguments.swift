@@ -3,7 +3,6 @@ import Foundation
 
 /// Something a command couldn't do, said in a sentence an agent can act on:
 /// "No item titled “item 70” is on screen; scroll its grid to it first."
-@_spi(GestureAutomation)
 public struct AutomationError: Error, Sendable, Equatable, CustomStringConvertible {
     public let description: String
 
@@ -21,7 +20,6 @@ public struct AutomationError: Error, Sendable, Equatable, CustomStringConvertib
 ///
 ///     let arguments = try AutomationArguments(["command": "pluck", "item": "item 7", "pull": "0,0,0.06"])
 ///     try arguments.vector("pull")   // SIMD3(0, 0, 0.06)
-@_spi(GestureAutomation)
 public struct AutomationArguments: Sendable {
     /// The command's name, as sent.
     public let command: String

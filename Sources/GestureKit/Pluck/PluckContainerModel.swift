@@ -93,6 +93,11 @@ public final class PluckContainerModel {
     @ObservationIgnored private var heldSinceDate: Date?
     @ObservationIgnored private var phaseInstant: ContinuousClock.Instant?
     @ObservationIgnored private var phaseDate: Date?
+    #if DEBUG
+    /// What GestureKit's automation drives its scroll view by, as its
+    /// modifier was last given it.
+    @ObservationIgnored var automationID = "grid"
+    #endif
 
     public init() {}
 
@@ -269,6 +274,9 @@ public final class PluckContainerModel {
         if scrollIsHeldOff != watch.holdsTheScroll {
             scrollIsHeldOff = watch.holdsTheScroll
             pluckContainerLogger.info("The container's scroll view is \(self.scrollIsHeldOff ? "held off" : "on again", privacy: .public)")
+            #if DEBUG
+            GestureAutomation.shared.heard("grid", on: automationID, scrollIsHeldOff ? "scroll held off" : "scroll on again")
+            #endif
         }
         showStatus()
         scheduleWatchCheck()
@@ -326,6 +334,9 @@ public final class PluckContainerModel {
 
     private func raise(_ alarm: PluckHoldWatch<AnyHashable>.Alarm, at now: ContinuousClock.Instant) {
         let lines = [("alarm", alarm.line)] + watch.alarmLines(for: alarm, at: now)
+        #if DEBUG
+        GestureAutomation.shared.heard("grid", on: automationID, "alarm", .string(alarm.line))
+        #endif
         watch.raised(alarm, at: now)
         let title = switch alarm.kind {
         case .heldWithNoPinchUnderWay: "Scroll held by \(alarm.title), no pinch under way"
@@ -506,7 +517,8 @@ extension View {
     /// axes it scrolls along, `scrollAxes`, the scroll view's own, vertical
     /// by default, along which a hold allows only a small move. It holds the
     /// scroll off while an item is lifted, if the tuning stops it, and traces
-    /// each scroll of its own.
+    /// each scroll of its own. In a debug build, GestureKit's automation
+    /// drives it as `automationID`, "grid" unless given.
     ///
     ///     ScrollView {
     ///         LazyVGrid(columns: columns) {
@@ -522,9 +534,13 @@ extension View {
         _ model: PluckContainerModel,
         tuning: PluckTuning = .defaults,
         trace: TraceRecorder? = nil,
-        scrollAxes: Axis.Set = .vertical
+        scrollAxes: Axis.Set = .vertical,
+        automationID: String? = nil
     ) -> some View {
-        modifier(PluckContainerModifier(model: model, tuning: tuning, recorder: trace, scrollAxes: PluckScrollAxes(scrollAxes)))
+        modifier(PluckContainerModifier(
+            model: model, tuning: tuning, recorder: trace, scrollAxes: PluckScrollAxes(scrollAxes),
+            automationID: automationID ?? "grid"
+        ))
     }
 }
 
@@ -550,6 +566,7 @@ private struct PluckContainerModifier: ViewModifier {
     let tuning: PluckTuning
     let recorder: TraceRecorder?
     let scrollAxes: PluckScrollAxes
+    let automationID: String
 
     func body(content: Content) -> some View {
         content
@@ -578,10 +595,9 @@ private struct PluckContainerModifier: ViewModifier {
                 model.disappeared()
             }
             #if DEBUG
-            // The hand's stand-in's word for the scroll view's phase.
-            .modifier(PluckStandInListener(adapter: .pluckContainer) { step in
-                if case .scrollPhase(let phase) = step { model.scrollPhaseChanged(to: phase) }
-            })
+            // The hand's stand-in's words for the scroll view: its phase,
+            // and its content moved.
+            .modifier(PluckContainerStandIn(model: model, automationID: automationID, recorder: recorder))
             #endif
             .environment(\.pluckContainerContext, PluckContainerContext(model: model, tuning: tuning, recorder: recorder, scrollAxes: scrollAxes))
     }

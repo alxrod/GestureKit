@@ -5,7 +5,6 @@ import Foundation
 /// the command's start; which adapter, "pluck", "press", "carry",
 /// "hold watch", "grid"; what it was on, by name; what happened, "lifted",
 /// "spawned", "tap"; and what it said of it.
-@_spi(GestureAutomation)
 public struct AutomationEvent: Sendable, Equatable {
     public var time: Double
     public var source: String
@@ -27,7 +26,6 @@ public struct AutomationEvent: Sendable, Equatable {
 /// one line: how many, the first's time, and the last's time and detail. So
 /// a 90-word drag answers in a line, and an agent asserting on "spawned"
 /// finds it among a handful.
-@_spi(GestureAutomation)
 public struct AutomationEventLog: Sendable, Equatable {
     /// One line: an event, or a run of one thing on one target.
     public struct Line: Sendable, Equatable {
@@ -107,7 +105,6 @@ public struct AutomationEventLog: Sendable, Equatable {
 
 /// What a command's drive came to, told from what the adapters reported, so
 /// it reads the same with the trace switched off.
-@_spi(GestureAutomation)
 public enum AutomationOutcome {
     /// A pinch on a pluckable item: it broke free, `spawned`; it lifted and
     /// settled short of that, `lifted`; it was the item's tap, `tapped`; or

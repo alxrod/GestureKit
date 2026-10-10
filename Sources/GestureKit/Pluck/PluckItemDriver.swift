@@ -230,6 +230,18 @@ final class PluckItemDriver {
         }
     }
 
+    /// The pull's drag ended where it last moved to, as a drag's end does,
+    /// or at `location`, in the item's points, should it never have moved.
+    func dragEndedWhereItLastMoved(orAt location: Point3D, _ setting: Setting) {
+        dragEnded(at: lastLocation ?? location, setting)
+    }
+
+    /// Whether a pinch is under way on the item, or a count it began still
+    /// runs.
+    var isBusy: Bool {
+        pinches.press != nil || holdCount != nil || armCount != nil || quietCount != nil
+    }
+
     /// The pull's drag stopped without ending, as when the container's
     /// scroll view takes the pinch: a cancel, should the drag still have it.
     func dragStopped(_ setting: Setting) {

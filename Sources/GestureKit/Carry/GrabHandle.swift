@@ -77,7 +77,9 @@ public enum GrabHandle {
     /// meters, rounded at its ends unless `cornerRadius` says otherwise,
     /// taking looks and pinches over `reach`, or its size, with the reach's
     /// middle `reachOffset` from the glow's; standing `lift` in front of
-    /// its parent's origin.
+    /// its parent's origin. In a debug build, GestureKit's automation carries
+    /// it by its carried thing's id, for a `GrabHandleComponent`, or else by
+    /// `name`, while it's in a scene.
     public static func make(
         named name: String,
         size: SIMD2<Float>,
@@ -93,6 +95,10 @@ public enum GrabHandle {
         handle.components.set(HoverEffectComponent(.highlight(.init(color: .white, strength: 1, opacityFunction: .full))))
         handle.position = SIMD3(0, 0, lift)
         reshape(handle, size: size, reach: reach, reachOffset: reachOffset, cornerRadius: cornerRadius)
+        #if DEBUG
+        // GestureKit's automation carries it by what it carries, or its name.
+        GestureAutomation.shared.noteHandle(handle, named: (marker as? GrabHandleComponent)?.carriedID ?? name)
+        #endif
         return handle
     }
 

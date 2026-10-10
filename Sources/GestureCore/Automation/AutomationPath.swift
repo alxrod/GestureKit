@@ -9,7 +9,6 @@ import Foundation
 /// right, y up, z toward the viewer. An adapter hears a drag in its view's
 /// points: x across, y down, z toward the viewer, 1,360 to the meter, as
 /// visionOS draws a view in a space (`points(ofMeters:)`).
-@_spi(GestureAutomation)
 public enum AutomationPath {
     /// A view's points to a meter, as visionOS draws a view in a space, and
     /// as an attachment in an immersive space is drawn.

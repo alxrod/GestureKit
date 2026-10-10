@@ -1,6 +1,6 @@
 #if DEBUG
 import Foundation
-@_spi(GestureAutomation) import GestureCore
+import GestureCore
 import Testing
 
 @Suite("Automation's JSON")

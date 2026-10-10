@@ -152,7 +152,15 @@ private struct PluckableItemModifier: ViewModifier {
             .onDisappear { driver.itemWent() }
             .raisedWhileLifted(isLifted)
             #if DEBUG
-            .modifier(PluckStandInListener(adapter: .pluckItem(title)) { standInStep($0) })
+            .modifier(PinchStandInEar(
+                adapter: .pluckItem(title),
+                name: title,
+                id: String(describing: id.base),
+                pluck: { standInStep($0) },
+                isBusy: { driver.isBusy },
+                facts: { standInFacts(tuning) },
+                recorder: context?.recorder
+            ))
             #endif
     }
 
@@ -170,11 +178,27 @@ private struct PluckableItemModifier: ViewModifier {
         case .dragMoved(let points):
             let at = touch + points
             driver.dragMoved(points, at: Point3D(x: at.x, y: at.y, z: at.z), setting)
-        case .dragEnded: driver.dragEnded(at: Point3D(x: touch.x, y: touch.y, z: touch.z), setting)
+        case .dragEnded: driver.dragEndedWhereItLastMoved(orAt: Point3D(x: touch.x, y: touch.y, z: touch.z), setting)
         case .dragStopped: driver.dragStopped(setting)
         case .itemWent: driver.itemWent()
-        case .scrollPhase: break
+        case .scrollPhase, .contentScrolled: break
         }
+    }
+
+    /// What the item goes by and holds now, for GestureKit's automation: its
+    /// hold, its pull, and its drag's start and whether it's let in for the
+    /// stage its pinch is in, held back or brought down at the lift.
+    private func standInFacts(_ tuning: PluckTuning) -> AutomationJSON {
+        let drag = tuning.liftedTracking.drag(attached: driver.attachment.isAttached, tuning: tuning)
+        return [
+            "title": .string(title),
+            "holdDuration": .number(tuning.holdDuration),
+            "pullArmDelay": .number(tuning.pullArmDelay),
+            "breakFreeDistance": .number(tuning.breakFreeDistance),
+            "tracking": .string(tuning.liftedTracking.description),
+            "lifted": .bool(context?.model.liftedItem == id),
+            "dragNow": ["start": .number(drag.startDistance), "letIn": .bool(drag.isLetIn)],
+        ]
     }
     #endif
 
@@ -203,9 +227,25 @@ private struct PluckableItemModifier: ViewModifier {
             model: context?.model,
             recorder: context?.recorder,
             scrollAxes: context?.scrollAxes ?? .vertical,
-            perform: perform,
+            perform: reported(perform),
             metrics: physicalMetrics
         )
+    }
+}
+
+extension PluckableItemModifier {
+    /// The app's `perform`, telling GestureKit's automation each event first
+    /// in a debug build, while a command listens.
+    fileprivate func reported(_ perform: @escaping (PluckEvent) -> Void) -> (PluckEvent) -> Void {
+        #if DEBUG
+        let title = title
+        return { event in
+            GestureAutomation.shared.heardPluck(event, on: title)
+            perform(event)
+        }
+        #else
+        return perform
+        #endif
     }
 }
 
