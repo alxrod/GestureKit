@@ -120,12 +120,12 @@ struct TraceLogTests {
         #expect(run.detail == "hand 0.10 m")
         #expect(run.latestDetail == "hand 0.20 m")
         #expect(run.farthest == TraceMeasure(0.30, "m"))
-        #expect(run.text == "carry ×3 +0.20–0.90 s (hand 0.10 m … hand 0.20 m; farthest 0.30 m)")
+        #expect(run.text == "carry ×3 +0.20–0.90 s (farthest 0.30 m; hand 0.10 m … hand 0.20 m)")
         #expect(log.interactions[0].eventsRecorded == 5)
         log.finish(id, outcome: "carried", at: at(1_000))
         #expect(log.interactions[0].summary == """
             #1 Carry · Pinch on a handle → carried, 1.00 s: touch +0.00 s; \
-            carry ×3 +0.20–0.90 s (hand 0.10 m … hand 0.20 m; farthest 0.30 m); release +1.00 s (let go)
+            carry ×3 +0.20–0.90 s (farthest 0.30 m; hand 0.10 m … hand 0.20 m); release +1.00 s (let go)
             """)
     }
 

@@ -231,7 +231,7 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                     let hand = simd_length(handMoved)
                     trace.event(
                         "carry",
-                        "hand \(Self.meters(hand)) m from the touch, middle to \(carryPlaceText(middle))",
+                        "hand \(Self.meters(hand)) m out, middle at \(carryPlaceText(middle))",
                         measure: TraceMeasure(Double(hand), "m")
                     )
                 }

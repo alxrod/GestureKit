@@ -89,23 +89,24 @@ public struct TraceEvent: Sendable, Hashable {
         isFolded ? "\(name) ×\(count)" : name
     }
 
-    /// What it said, as a trace shows it: its detail; for a run, the first's
-    /// and the latest's, and the farthest any reached; empty for nothing.
+    /// What it said, as a trace shows it: its detail; for a run, the
+    /// farthest any reached first, so a line cut short keeps it, then the
+    /// first's detail and the latest's; empty for nothing.
     public var detailText: String {
         var parts: [String] = []
+        if isFolded, let farthest {
+            parts.append("farthest \(farthest.text)")
+        }
         if isFolded, let latestDetail, latestDetail != detail {
             parts.append(detail.isEmpty ? "… \(latestDetail)" : "\(detail) … \(latestDetail)")
         } else if !detail.isEmpty {
             parts.append(detail)
         }
-        if isFolded, let farthest {
-            parts.append("farthest \(farthest.text)")
-        }
         return parts.joined(separator: "; ")
     }
 
     /// The line, as the console shows it: "release +0.12 s (moved 0.2 cm)",
-    /// or "drag ×14 +0.20–1.10 s (first … latest; farthest 3.0 cm)".
+    /// or "drag ×14 +0.20–1.10 s (farthest 3.0 cm; first … latest)".
     public var text: String {
         let detail = detailText
         return "\(nameText) \(timeText)" + (detail.isEmpty ? "" : " (\(detail))")
