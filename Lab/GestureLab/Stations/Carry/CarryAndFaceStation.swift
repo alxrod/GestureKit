@@ -13,7 +13,7 @@ import SwiftUI
 final class CarryAndFaceStation: LabStation {
     let id = "carry-and-face"
     let title = "Carry and face"
-    let summary = "Three panels, each carried by the handle under it, 1:1 with your hand, turning to face you."
+    let summary = "Panels carried by their handles, turning to face you."
     let carry = TuningStore<CarryTuning>(namespace: "GestureLab.carry-and-face.carry")
     let facing = TuningStore<FacingTuning>(namespace: "GestureLab.carry-and-face.facing")
     let trace = TraceRecorder(logsSummariesPublicly: true)
@@ -129,23 +129,22 @@ extension CarryAndFaceStation {
 }
 #endif
 
-/// The carry and face station's part of the window: how to try it, where
-/// the last panel stood, and its switches.
+/// The carry and face station's part of the window: what to try, where the
+/// last panel stood, and its switches.
 private struct CarryAndFaceWindow: View {
     @Bindable var station: CarryAndFaceStation
 
     var body: some View {
-        let carry = station.carry.tuning
         VStack(alignment: .leading, spacing: 14) {
-            Text("Pinch the pill under a panel and carry it: it follows your hand 1:1 once your pinch has moved \(carry.startDistance.formatted()) pt, turns to face you as it goes, and stops \(Double(carry.nearestToHead).formatted()) m from your head however close you pull it. Carry one over or under your head and it keeps the way it faced. Each pinch shows in the trace, with how far your hand and the panel went and where it stood.")
+            Text("Pinch the pill under a panel and carry it.")
                 .font(.system(size: 20))
             if let lastStood = station.lastStood {
                 Text(lastStood)
                     .font(.system(size: 18, weight: .medium).monospacedDigit())
             }
-            Toggle("Face me as I move", isOn: $station.facesYouAsYouMove)
+            Toggle("Face me", isOn: $station.facesYouAsYouMove)
                 .font(.system(size: 20))
-            Button("Put them back", systemImage: "arrow.uturn.backward") {
+            Button("Reset", systemImage: "arrow.uturn.backward") {
                 station.putBack()
             }
         }
@@ -173,7 +172,7 @@ private struct CarryAndFaceSpace: View {
                 Attachment(id: panel.name) {
                     CarryLabPanel(
                         title: panel.title,
-                        detail: "Carry me by the pill under me."
+                        detail: "Carry me by my pill."
                     ) { height in
                         station.panelResized(panel.name, toHeight: height)
                     }

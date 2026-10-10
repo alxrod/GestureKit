@@ -68,12 +68,12 @@ private struct TraceViewContent: View {
                     .disabled(interactions.isEmpty)
             }
             if !recorder.isRecording {
-                Text("Tracing is off: the gestures write nothing down here, and the console gets at most a line for each.")
+                Text("Tracing off.")
                     .font(.system(size: 17))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: 0)
             } else if interactions.isEmpty {
-                Text("Nothing yet. Try the gesture, and each interaction shows here, newest first.")
+                Text("Nothing yet.")
                     .font(.system(size: 17))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer(minLength: 0)

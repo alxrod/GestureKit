@@ -104,11 +104,17 @@ private struct TuningPanelRow<Tuning: Tunable>: View, Equatable {
             ) {
                 Text(parameter.title)
             } minimumValueLabel: {
+                // Whole, the track taking what's left: squeezed, a range's
+                // ends read "0...." in a station's column.
                 Text(parameter.text(for: .number(parameter.range.lowerBound)))
                     .font(.system(size: 15).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
             } maximumValueLabel: {
                 Text(parameter.text(for: .number(parameter.range.upperBound)))
                     .font(.system(size: 15).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
             }
             if value != parameter.defaultValue {
                 Text("Default \(parameter.text(for: parameter.defaultValue))")

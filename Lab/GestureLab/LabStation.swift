@@ -16,7 +16,7 @@ import SwiftUI
 ///     final class CarryStation: LabStation {
 ///         let id = "carry"
 ///         let title = "Carry"
-///         let summary = "A panel carried by its grab handle, 1:1 with the hand."
+///         let summary = "A panel carried by its grab handle."
 ///         let tuning = TuningStore<CarryTuning>(namespace: "GestureLab.carry")
 ///         let trace = TraceRecorder(logsSummariesPublicly: true)
 ///
@@ -24,7 +24,7 @@ import SwiftUI
 ///             // Each RealityKit component and system its space uses.
 ///         }
 ///
-///         var windowContent: some View { Text("Pinch the handle under the panel and carry it.") }
+///         var windowContent: some View { Text("Pinch the pill under the panel and carry it.") }
 ///         var spaceContent: some View { CarrySpace(station: self) }
 ///         var tuningContent: some View { TuningPanel(tuning, title: "Carry") }
 ///     }
@@ -49,14 +49,14 @@ protocol LabStation: AnyObject {
     /// Its name in the list, a word or two.
     var title: String { get }
 
-    /// What it shows, in one line.
+    /// What it is, in one short sentence.
     var summary: String { get }
 
     /// What its gestures write each interaction to.
     var trace: TraceRecorder { get }
 
-    /// What the window shows above its tuning: how to try it, and anything
-    /// it wants to show as it's tried.
+    /// What the window shows above its tuning: what to try, in a short
+    /// sentence or two, and anything it wants to show as it's tried.
     @ViewBuilder var windowContent: WindowContent { get }
 
     /// What the immersive space shows while it's chosen: a `RealityView`
@@ -67,7 +67,8 @@ protocol LabStation: AnyObject {
     @ViewBuilder var tuningContent: TuningContent { get }
 
     /// The title of the window of its own the lab opens as it's chosen, in a
-    /// word or two; nil, as for most stations, for none.
+    /// word, "Grid", which its Open button reads; nil, as for most stations,
+    /// for none.
     var ownWindowTitle: String? { get }
 
     /// What its own window shows, edge to edge: a gesture that lives in a

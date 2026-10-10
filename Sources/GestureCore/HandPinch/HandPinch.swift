@@ -38,9 +38,9 @@ extension HandPinchTuning: Tunable {
     public static var defaults: HandPinchTuning { HandPinchTuning() }
 
     public static let parameters: [TuningParameter<HandPinchTuning>] = [
-        .number(\.closesBelow, key: "closesBelow", title: "A hand's pinch closes below", unit: "m", range: 0.005...0.05, step: 0.001),
-        .number(\.opensAbove, key: "opensAbove", title: "A hand's pinch opens past", unit: "m", range: 0.01...0.08, step: 0.001),
-        .number(\.lostAfter, key: "lostAfter", title: "A pinched hand untracked is let go after", unit: "s", range: 0.05...2, step: 0.05),
+        .number(\.closesBelow, key: "closesBelow", title: "Closes below", unit: "m", range: 0.005...0.05, step: 0.001),
+        .number(\.opensAbove, key: "opensAbove", title: "Opens past", unit: "m", range: 0.01...0.08, step: 0.001),
+        .number(\.lostAfter, key: "lostAfter", title: "Lost after", unit: "s", range: 0.05...2, step: 0.05),
     ]
 }
 

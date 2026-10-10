@@ -328,14 +328,14 @@ public final class PluckContainerModel {
         let lines = [("alarm", alarm.line)] + watch.alarmLines(for: alarm, at: now)
         watch.raised(alarm, at: now)
         let title = switch alarm.kind {
-        case .heldWithNoPinchUnderWay: "Scroll held by \(alarm.title), no pinch under way"
-        case .letGoWithNothingHeard: "Scroll held by \(alarm.title), nothing heard from its pinch: let go"
-        case .letGoWithNoPinchOnIt: "Scroll held by \(alarm.title), no pinch on it: let go"
-        case .scrollLetGoWithNothingHeard: "Scroll held for the pinch on \(alarm.title), nothing heard: let go"
-        case .viewsDisagree: "The hold's views disagree"
-        case .scrollViewNeverTookIt: "The scroll view never took the pinch on \(alarm.title)"
+        case .heldWithNoPinchUnderWay: "Scroll held by \(alarm.title), no pinch"
+        case .letGoWithNothingHeard: "Scroll held by \(alarm.title), pinch unheard"
+        case .letGoWithNoPinchOnIt: "Scroll held by \(alarm.title), no pinch on it"
+        case .scrollLetGoWithNothingHeard: "Scroll held for \(alarm.title)'s pinch, unheard"
+        case .viewsDisagree: "Views disagree"
+        case .scrollViewNeverTookIt: "Scroll view never took \(alarm.title)'s pinch"
         }
-        let outcome = alarm.kind.letsGo ? "let go by the net" : "stuck"
+        let outcome = alarm.kind.letsGo ? "net let go" : "stuck"
         let traced = recorder?.alarm("Pluck", title: title, lines: lines, outcome: outcome) ?? false
         if !traced {
             let events = lines.dropFirst().map { "\($0.0) \($0.1)" }.joined(separator: "; ")

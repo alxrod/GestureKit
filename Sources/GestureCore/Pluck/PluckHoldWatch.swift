@@ -198,23 +198,25 @@ public struct PluckHoldWatch<Item: Hashable> {
             self.detail = detail
         }
 
-        /// The alarm in a line: "Scroll held by item 7 for 0.62 s with no
-        /// pinch under way for 0.55 s; its pinch: item 7: press up, …".
+        /// The alarm in a line, tersely, for a status line, a trace, and the
+        /// console: "Scroll held by item 7 for 0.62 s, no pinch for 0.55 s;
+        /// pinch: item 7: press up, …". "Net let go" begins one where the
+        /// safety net let the hold go.
         public var line: String {
-            let pinchText = pinch.map { "its pinch: \($0.description)" } ?? "no pinch on it under way"
+            let pinchText = pinch.map { "pinch: \($0.description)" } ?? "no pinch on it"
             switch kind {
             case .heldWithNoPinchUnderWay:
-                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with no pinch under way for \(pluckWatchSeconds(unclaimedFor)) s; \(pinchText)"
+                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s, no pinch for \(pluckWatchSeconds(unclaimedFor)) s; \(pinchText)"
             case .letGoWithNothingHeard:
-                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with nothing heard from its pinch for \(pluckWatchSeconds(unheardFor)) s, let go by the safety net; \(pinchText)"
+                return "Net let go: scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s, pinch unheard for \(pluckWatchSeconds(unheardFor)) s; \(pinchText)"
             case .letGoWithNoPinchOnIt:
-                return "Scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s with no pinch on it, let go by the safety net"
+                return "Net let go: scroll held by \(title) for \(pluckWatchSeconds(heldFor)) s, no pinch on it"
             case .scrollLetGoWithNothingHeard:
-                return "Scroll held for the pinch on \(title), its item down, for \(pluckWatchSeconds(heldFor)) s with nothing heard from it for \(pluckWatchSeconds(unheardFor)) s, let go by the safety net; \(pinchText)"
+                return "Net let go: scroll held for \(title)'s pinch, item down, for \(pluckWatchSeconds(heldFor)) s, unheard for \(pluckWatchSeconds(unheardFor)) s; \(pinchText)"
             case .viewsDisagree:
-                return "The hold's views disagree: \(detail ?? "")"
+                return "Views disagree: \(detail ?? "")"
             case .scrollViewNeverTookIt:
-                return "The scroll view never took the scroll of the pinch on \(title): no phase of scrolling, nor its pan begun, \(pluckWatchSeconds(heldFor)) s after the rules told it as one; \(detail ?? "")"
+                return "Scroll view never took \(title)'s scroll: no phase or pan \(pluckWatchSeconds(heldFor)) s after it was ruled one; \(detail ?? "")"
             }
         }
     }

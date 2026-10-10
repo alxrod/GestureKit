@@ -2,29 +2,22 @@ import GestureKit
 import RealityKit
 import SwiftUI
 
-/// The press station's part of the window: how to try it, its choices, and
+/// The press station's part of the window: what to try, its choices, and
 /// what last happened.
 struct PressStationWindow: View {
     @Bindable var station: PressStation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("""
-                Tap the long surface to drop a marker. Drag along it to move the yellow playhead, and flick it to coast; \
-                pinch it while it coasts to catch it. Drag across it and nothing happens. Hold still half a second to pick \
-                it up, which pops it toward you, then move 2 cm to carry it. Hold a full second and "Held" flashes. Two \
-                hands stretch it. Drag the tab at its right end to resize it, or hold the tab still to see its hold \
-                watched beside its drag.
-                """)
-                .font(.system(size: 19))
-            Toggle("A drag along scrolls, and a flick coasts", isOn: $station.dragAlongScrolls)
-            Toggle("Refuse every pickup", isOn: $station.refusesPickUps)
-            Toggle("Refuse every carry", isOn: $station.refusesCarries)
+            Text("Tap, drag, flick, or hold the surface. Hold its tab.")
+            Toggle("Drag scrolls", isOn: $station.dragAlongScrolls)
+            Toggle("No pickups", isOn: $station.refusesPickUps)
+            Toggle("No carries", isOn: $station.refusesCarries)
             HStack {
                 Text(station.lastEvent)
                     .font(.system(size: 24, weight: .semibold))
                 Spacer()
-                Button("Reset the surface") { station.resetSurface() }
+                Button("Reset") { station.resetSurface() }
             }
         }
         .font(.system(size: 19))

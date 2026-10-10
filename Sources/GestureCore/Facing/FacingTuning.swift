@@ -18,7 +18,7 @@ extension FacingTuning: Tunable {
     public static var defaults: FacingTuning { .standard }
 
     public static let parameters: [TuningParameter<FacingTuning>] = [
-        .number(\.verticalTolerance, key: "verticalTolerance", title: "Straight above or below within",
+        .number(\.verticalTolerance, key: "verticalTolerance", title: "Overhead within",
                 unit: "m", range: 0...0.05, step: 0.0005),
     ]
 }

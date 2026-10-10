@@ -32,7 +32,7 @@ extension CarryTuning: Tunable {
     public static let parameters: [TuningParameter<CarryTuning>] = [
         .number(\.startDistance, key: "startDistance", title: "Start distance",
                 unit: "pt", range: 0...40, step: 1),
-        .number(\.nearestToHead, key: "nearestToHead", title: "Nearest to the head",
+        .number(\.nearestToHead, key: "nearestToHead", title: "Nearest the head",
                 unit: "m", range: 0.1...1, step: 0.01),
     ]
 }

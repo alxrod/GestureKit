@@ -48,11 +48,11 @@ struct LabWindow: View {
                             Label("Trace", systemImage: "list.bullet.rectangle")
                         }
                         .toggleStyle(.button)
-                        .help("Trace what every station's gestures do; off, nothing traces")
+                        .help("Trace every station")
                     }
                     if !lab.isSpaceOpen {
                         ToolbarItem {
-                            Button("Open the space", systemImage: "cube.transparent") {
+                            Button("Open space", systemImage: "cube.transparent") {
                                 Task { await openSpace() }
                             }
                         }
@@ -114,7 +114,7 @@ private struct StationDetail: View {
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
                     if let ownWindowTitle = station.ownWindowTitle {
-                        Button("Open the \(ownWindowTitle)", systemImage: "macwindow", action: openOwnWindow)
+                        Button("Open \(ownWindowTitle)", systemImage: "macwindow", action: openOwnWindow)
                     }
                     station.windowView
                     station.tuningView
@@ -146,7 +146,7 @@ struct StationOwnWindow: View {
                         .padding(.leading, 24)
                 }
         } else {
-            Text("This window belongs to no station. Close it, and choose a station in the lab's window.")
+            Text("No station. Close this window.")
                 .font(.system(size: 22))
                 .padding(40)
         }

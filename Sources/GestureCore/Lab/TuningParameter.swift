@@ -15,7 +15,7 @@ import Foundation
 /// Make one with `number(_:key:title:unit:range:step:)` or
 /// `toggle(_:key:title:)`:
 ///
-///     .number(\.nearestToHead, key: "nearestToHead", title: "Nearest to the head",
+///     .number(\.nearestToHead, key: "nearestToHead", title: "Nearest the head",
 ///             unit: "m", range: 0.1...1, step: 0.01)
 public struct TuningParameter<Tuning: Tunable>: Sendable, Identifiable {
     /// How the panel sets a value.
