@@ -113,7 +113,8 @@ an entity was the only one that followed the hand.
 
 `grabHandlesCarryEntities` moves the entity itself: each handle carries the
 ancestor its `GrabHandleComponent` names, in that ancestor's parent's frame,
-through `CarriedEntity.stand`.
+through `CarriedEntity.stand`. However a carry ends, the entity stands where
+the hand last put it.
 
 ```swift
 import GestureKit
@@ -150,6 +151,22 @@ handle carries and where its middle is; `onBegin` may refuse; `onCarry` is
 told each step, its `middle` and how far the hand has moved; and `onEnd` the
 last. `HandCarry` gives the carry's rules for standing it.
 
+`onEnd` is told how the carry ended, its moment's `ending`:
+
+| `CarryEnding` | When |
+| --- | --- |
+| `.released` | The pinch was let go. |
+| `.cancelled` | The system cancelled the gesture: its state reset with no release. |
+| `.viewWent` | The view the carry is on went mid-carry, as when its immersive space closes. |
+
+A release chose where the thing stands; the other two chose nothing, so an
+app that saves where things are let go may put a thing back instead, as
+below. SwiftUI may reset a gesture's state before or after it tells a
+release, so a reset waits a turn of the main actor before it counts as a
+cancel. `ending` is nil in `onBegin` and `onCarry`. In a simulator,
+`gesturekit-drive carry <handle> ending=cancelled` drives a cancelled carry,
+and every carry's answer says its `"ending"` ([Automation](#automation)).
+
 ```swift
 import GestureKit
 import RealityKit
@@ -164,6 +181,8 @@ struct BoardHandle: Component {
 @MainActor @Observable
 final class Boards {
     var middles: [Int: SIMD3<Float>] = [1: [-0.4, 1.3, -1], 2: [0.4, 1.3, -1]]
+    /// Where each board being carried was lifted from.
+    var liftedFrom: [Int: SIMD3<Float>] = [:]
 }
 
 struct BoardsView: View {
@@ -192,11 +211,23 @@ struct BoardsView: View {
                       let middle = boards.middles[board] else { return nil }
                 return CarryPinch.Grabbed(id: board, middle: middle)
             },
+            onBegin: { step in
+                boards.liftedFrom[step.id] = step.middle
+                return true
+            },
             onCarry: { step in
                 // Where the hand puts it, but never nearer the head than 0.3 m.
                 let head = HeadTracker.shared.viewerPosition() ?? UntrackedHead.eye
                 let before = boards.middles[step.id] ?? step.middle
                 boards.middles[step.id] = HandCarry.middle(carriedTo: step.middle, clearOf: head, from: before)
+            },
+            onEnd: { step in
+                let liftedFrom = boards.liftedFrom.removeValue(forKey: step.id)
+                // Released, it stays where the hand left it. Cancelled, or
+                // its view gone mid-carry, it goes back where it was.
+                if step.ending != .released, let liftedFrom {
+                    boards.middles[step.id] = liftedFrom
+                }
             }
         )
     }
