@@ -135,12 +135,17 @@ struct PluckStandInListener: ViewModifier {
     let adapter: PinchStandIn.Adapter
     let handler: (PinchStandIn.PluckStep) -> Void
     @State private var listening: UUID?
+    /// The handler as the view last made it, so a step goes to the view as
+    /// it is now, its environment and tuning with it, not as it appeared.
+    @State private var latest = PluckStandInHandler()
 
     func body(content: Content) -> some View {
-        content
+        let latest = latest
+        latest.handler = handler
+        return content
             .onAppear {
                 guard PinchStandIn.shared.isListening, listening == nil else { return }
-                listening = PinchStandIn.shared.listen(as: adapter, toPluck: handler)
+                listening = PinchStandIn.shared.listen(as: adapter, toPluck: { latest.handler?($0) })
             }
             .onDisappear {
                 guard let listening else { return }
@@ -148,6 +153,13 @@ struct PluckStandInListener: ViewModifier {
                 self.listening = nil
             }
     }
+}
+
+/// The latest handler of a pluck adapter's ear, kept in a reference so the
+/// view's every making sets it without drawing again.
+@MainActor
+final class PluckStandInHandler {
+    var handler: ((PinchStandIn.PluckStep) -> Void)?
 }
 
 /// An adapter's ear for the stand-in: listens while the view is on screen,

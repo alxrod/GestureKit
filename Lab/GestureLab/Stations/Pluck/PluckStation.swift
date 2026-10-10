@@ -40,6 +40,9 @@ final class PluckStation: LabStation {
     let summary = "Pull a numbered item out of a scrolling grid into the room."
     let tuning = TuningStore<PluckTuning>(namespace: "GestureLab.pluck")
     let carry = TuningStore<CarryTuning>(namespace: "GestureLab.pluck.carry")
+    /// How a hand's pinch is told by hand tracking, should the pluck follow
+    /// a lifted pinch by the hand.
+    let handPinch = TuningStore<HandPinchTuning>(namespace: "GestureLab.pluck.hand")
     let trace = TraceRecorder(logsSummariesPublicly: true)
 
     /// The grid's container: the lifted item and the scroll's hold.
@@ -99,6 +102,7 @@ final class PluckStation: LabStation {
     var tuningContent: some View {
         VStack(spacing: 0) {
             TuningPanel(tuning, title: "Pluck")
+            TuningPanel(handPinch, title: "The hand's pinch, by hand tracking")
             TuningPanel(carry, title: "Carry, once it's out")
         }
     }
@@ -263,7 +267,7 @@ private struct PluckLabInstructions: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand, the item settling back into the grid. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. Let go of a lifted item without moving and it settles within half a second, so the next pinch scrolls; hold it perfectly still that long and it settles too. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off. Under the grid, the status line says whether the scroll is held off, for which item and since when, and, side by side, what the scroll view was given, the container's hold, the watch's lifted item, what the scroll view itself has, its scrolling and its pan, and its last phase: after any pluck, lift, or scroll, it should read Scroll on, given on, and scrolling on, pan on, once you let go. Through a pull's carry the scroll stays held until you let go. A red alarm there and in the trace means the scroll stayed held with no pinch under way past half a second, the safety net had to let it go, the views disagreed, or a pinch told as a scroll got nothing from the scroll view: “the scroll view never took it”; its trace line has the state and the last ten things the grid heard.")
+            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand, the item settling back into the grid. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. Let go of a lifted item without moving and it settles within half a second, so the next pinch scrolls; hold it perfectly still that long and it settles too. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off. Under the grid, the status line says whether the scroll is held off, for which item and since when, and, side by side, what the scroll view was given, the container's hold, the watch's lifted item, what the scroll view itself has, its scrolling and its pan, and its last phase: after any pluck, lift, or scroll, it should read Scroll on, given on, and scrolling on, pan on, once you let go. Through a pull's carry the scroll stays held until you let go. A red alarm there and in the trace means the scroll stayed held with no pinch under way past half a second, the safety net had to let it go, the views disagreed, or a pinch told as a scroll got nothing from the scroll view: “the scroll view never took it”; its trace line has the state and the last ten things the grid heard. Before the lift, nothing on an item but its button hears the pinch: its drag is held back by a 60 pt start, brought down at the lift, so a scroll is never eaten. Each pinch's trace says whether the drag's first word after the lift came near the touch, its start brought down, or at 60 pt, not; at 60 pt the item breaks free at once, with no sticky stage. To try the others, in the tuning: keep the start at 60 pt throughout, the known-safe fallback; hold the drag back by its mask instead, and watch whether a word comes after the lift; or follow the hand, by hand tracking, which asks your permission, its trace saying which hand it follows.")
                 .font(.system(size: 18))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
@@ -457,6 +461,16 @@ private struct PluckLabSpace: View {
         }
         .task {
             await HeadTracker.shared.start()
+        }
+        // Hand tracking, which asks the person first, only while the pluck
+        // follows a lifted pinch by the hand.
+        .task(id: station.tuning.tuning.tracksLiftedPinchByHand) {
+            if station.tuning.tuning.tracksLiftedPinchByHand {
+                await PinchTracker.shared.start()
+            }
+        }
+        .onChange(of: station.handPinch.tuning, initial: true) { _, tuning in
+            PinchTracker.shared.tuning = tuning
         }
         .onAppear { station.spaceAppeared() }
         .onDisappear { station.spaceDisappeared() }

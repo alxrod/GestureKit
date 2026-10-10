@@ -88,6 +88,35 @@ import Testing
         #expect(Replay.isHeld(grid))
     }
 
+    // MARK: The scroll view taking a scroll
+
+    /// A pinch moved along the scroll past where the scroll view's pan
+    /// starts, which the scroll view doesn't take, raises "the scroll view
+    /// never took it"; one moved across the scroll, which a vertical scroll
+    /// view has no cause to take, raises nothing, as Alex's clip of October
+    /// 10 asked of a pinch that ended as a tap.
+    @Test func onlyAMoveAlongTheScrollAsksTheScrollViewToTakeIt() {
+        var along = PluckReplayGrid()
+        along.press("7", down: true)
+        along.advance(to: 0.1)
+        along.drag("7", 0, 15, 0)
+        along.advance(to: 0.15)
+        along.press("7", down: false)
+        along.tap("7")
+        along.advance(to: 1)
+        #expect(along.alarms.map(\.kind) == [.scrollViewNeverTookIt])
+
+        var across = PluckReplayGrid()
+        across.press("7", down: true)
+        across.advance(to: 0.1)
+        across.drag("7", 45, 0, 0)
+        across.advance(to: 0.15)
+        across.press("7", down: false)
+        across.tap("7")
+        across.advance(to: 1)
+        #expect(across.alarms.isEmpty)
+    }
+
     // MARK: Alex's clip of October 10
 
     /// The words that end the pull's pinch as it's let go: the drag's end and

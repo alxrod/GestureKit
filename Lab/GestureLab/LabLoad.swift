@@ -33,6 +33,16 @@ private let labLoadLogger = Logger(subsystem: "net.alexbrodriguez.gesturekit", c
 /// - `handle`: a stand-in pinch carrying the middle panel of carry and face
 ///   by its handle through `.grabHandleCarry`, round a circle 20 cm across,
 ///   90 words a second for 2 s, then let go.
+/// - `lifted`: a pull on the pluck's grid, through its real adapters, under
+///   each way its tuning follows a lifted pinch (`PluckLiftedTracking`),
+///   each pinch saying only what its gestures could: the drag held back by
+///   its start, brought down at the lift, its first word after the lift
+///   coming at 8 pt from the touch, as if its new start took, and again at
+///   61 pt, as if it didn't; the known-safe fallback, the start kept at 60 pt;
+///   the drag held back by its mask, let in, and again with no word after
+///   the lift; and the hand, by the hand tracker's stand-in. It logs what
+///   each did ("Lab load lifted: …"), the pinch's trace summary saying what
+///   followed it, then puts the tuning back, once through.
 /// - `stuck`: the pluck's end words said through its real adapters,
 ///   `.pluckable` and `.pluckContainer`, by the stand-in, in the orders the
 ///   pluck's replays found held its grid's scroll (`PluckEndReplayTests`),
@@ -61,6 +71,7 @@ enum LabLoad: String, CaseIterable {
     case tab
     case handle
     case stuck
+    case lifted
 
     /// The loads `-labLoad` asked for at launch.
     static let asked: Set<LabLoad> = {
@@ -73,7 +84,7 @@ enum LabLoad: String, CaseIterable {
     @MainActor static func start(on lab: LabModel) {
         guard !asked.isEmpty else { return }
         let station = lab.chosen
-        if !asked.isDisjoint(with: [.surface, .tab, .handle, .stuck]) {
+        if !asked.isDisjoint(with: [.surface, .tab, .handle, .stuck, .lifted]) {
             PinchStandIn.shared.isListening = true
         }
         labLoadLogger.info("Lab load \(asked.map(\.rawValue).sorted().joined(separator: ","), privacy: .public) on the station \(station.id, privacy: .public)")
@@ -91,6 +102,7 @@ enum LabLoad: String, CaseIterable {
                 case .tab: await standInLoad(.holdWatch) { time in SIMD3(4 * sin(time * 9), 3 * cos(time * 7), 0) }
                 case .handle: await handleLoad(on: station)
                 case .stuck: await stuckLoad(on: station)
+                case .lifted: await liftedLoad(on: station)
                 case .scroll: break
                 }
             }
@@ -300,12 +312,11 @@ enum LabLoad: String, CaseIterable {
         func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
         func log(_ when: String) { logStuck(station, case: 8, "clip, " + when) }
 
-        // The pluck: touched, held a quarter second, pulled 2.5 cm across,
-        // broken free, and its spawn carried.
+        // The pluck: touched, held a quarter second, pulled across, its drag
+        // first speaking at its held-back start, broken free, and its spawn
+        // carried.
         say(.pressDown)
-        await wait(0.1)
-        say(.dragMoved(points: SIMD3(16, 0, 0)))
-        await wait(0.4)
+        await wait(0.5)
         say(.dragMoved(points: SIMD3(60, 0, 0)))
         await wait(0.05)
         log("after the break-free")
@@ -373,6 +384,120 @@ enum LabLoad: String, CaseIterable {
         say(.scrollPhase(.idle), to: .pluckContainer)
         await wait(0.2)
         log("after a scroll on empty space")
+    }
+
+    /// The stand-in hand the `lifted` load feeds hand tracking with: where it
+    /// is, and how far apart its fingertips, in meters.
+    @MainActor
+    private final class LiftedStandInHand {
+        var at: SIMD3<Float>
+        var gap: Float = 0.06
+
+        init(at: SIMD3<Float>) {
+            self.at = at
+        }
+    }
+
+    /// One way of following a lifted pinch the `lifted` load tries: its name,
+    /// the tuning's switches for it, and the drag's words after the lift, as
+    /// translations from the touch, a tenth of a second apart; or the hand.
+    private struct LiftedRun {
+        var name: String
+        var switches: [(key: String, value: TuningValue)]
+        var dragWords: [SIMD3<Double>]
+        var byHand = false
+    }
+
+    private static let liftedRuns: [LiftedRun] = [
+        LiftedRun(name: "the drag held back by its start, brought down at the lift, which took", switches: [], dragWords: [
+            SIMD3(8, 0, 0), SIMD3(20, 0, 0), SIMD3(30, 2, 0), SIMD3(52, 4, 0), SIMD3(90, 8, 10), SIMD3(140, 12, 20),
+        ]),
+        LiftedRun(name: "the drag held back by its start, brought down at the lift, which didn't take", switches: [], dragWords: [
+            SIMD3(61, 0, 0), SIMD3(90, 8, 10), SIMD3(140, 12, 20),
+        ]),
+        LiftedRun(name: "the known-safe fallback, the start kept at 60 pt", switches: [("lowersDragStartAtTheLift", .toggle(false))], dragWords: [
+            SIMD3(61, 0, 0), SIMD3(90, 8, 10), SIMD3(140, 12, 20),
+        ]),
+        LiftedRun(name: "the drag held back by its mask, let in, hearing the pinch", switches: [("holdsDragBackByItsMask", .toggle(true))], dragWords: [
+            SIMD3(2, 0, 0), SIMD3(14, 0, 0), SIMD3(26, 2, 0), SIMD3(44, 4, 0), SIMD3(80, 8, 10), SIMD3(130, 12, 20),
+        ]),
+        LiftedRun(name: "the drag held back by its mask, let in, never hearing the pinch", switches: [("holdsDragBackByItsMask", .toggle(true))], dragWords: []),
+        LiftedRun(name: "the hand, by the hand tracker's stand-in", switches: [("tracksLiftedPinchByHand", .toggle(true))], dragWords: [], byHand: true),
+    ]
+
+    @MainActor private static func liftedLoad(on station: any LabStation) async {
+        guard let station = station as? PluckStation else {
+            labLoadLogger.error("Lab load lifted: choose the pluck station")
+            return
+        }
+        for (number, run) in liftedRuns.enumerated() {
+            station.tuning.resetToDefaults()
+            for (key, value) in run.switches {
+                if let parameter = PluckTuning.parameters.first(where: { $0.key == key }) {
+                    station.tuning.set(value, for: parameter)
+                }
+            }
+            try? await Task.sleep(for: .seconds(0.3))
+            let itemNumber = number + 1
+            let item = PinchStandIn.Adapter.pluckItem("item \(itemNumber)")
+            let cardsBefore = station.cardCount
+            labLoadLogger.info("Lab load lifted: run \(itemNumber, privacy: .public), \(run.name, privacy: .public), \(station.tuning.tuning.liftedTracking.description, privacy: .public), on item \(itemNumber, privacy: .public)")
+            let hand = SIMD3<Float>(Float(itemNumber) * 0.1 - 0.35, 1.3, -1.0)
+            // The hand as hand tracking sees it, fed 20 times a second, as
+            // it is now: where, and how far apart its fingertips.
+            let standInHand = LiftedStandInHand(at: hand)
+            let feeding = Task { @MainActor in
+                guard run.byHand else { return }
+                while !Task.isCancelled {
+                    let at = standInHand.at
+                    let gap = standInHand.gap
+                    PinchTracker.shared.standIn(.right, thumbTip: at - SIMD3(gap / 2, 0, 0), indexTip: at + SIMD3(gap / 2, 0, 0))
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+            }
+            if run.byHand {
+                try? await Task.sleep(for: .seconds(0.1))
+                // The hand's pinch closing as the press comes.
+                standInHand.gap = 0.01
+                try? await Task.sleep(for: .seconds(0.06))
+            }
+            PinchStandIn.shared.step(item, .pressDown)
+            try? await Task.sleep(for: .seconds(0.3))
+            if run.byHand {
+                // Held, then out 2 cm across, then 4 cm, carried, and let go.
+                for (step, move) in [SIMD3<Float>(0.002, 0, 0), SIMD3(0.01, 0, 0), SIMD3(0.02, 0, 0), SIMD3(0.04, 0.005, 0.01), SIMD3(0.08, 0.02, 0.05), SIMD3(0.12, 0.03, 0.08)].enumerated() {
+                    try? await Task.sleep(for: .seconds(step == 3 ? 0.15 : 0.1))
+                    standInHand.at = hand + move
+                }
+                try? await Task.sleep(for: .seconds(0.15))
+                standInHand.gap = 0.06
+                try? await Task.sleep(for: .seconds(0.1))
+                PinchStandIn.shared.step(item, .pressUp)
+                PinchStandIn.shared.step(item, .tapped)
+            } else if run.dragWords.isEmpty {
+                // Its press cancelled as the lift stopped the scroll, and no
+                // word after: the quiet lets it go.
+                PinchStandIn.shared.step(item, .pressUp)
+                try? await Task.sleep(for: .seconds(0.8))
+            } else {
+                for (step, words) in run.dragWords.enumerated() {
+                    try? await Task.sleep(for: .seconds(step == 3 ? 0.15 : 0.1))
+                    PinchStandIn.shared.step(item, .dragMoved(points: words))
+                }
+                try? await Task.sleep(for: .seconds(0.1))
+                PinchStandIn.shared.step(item, .dragEnded)
+                PinchStandIn.shared.step(item, .dragStopped)
+                PinchStandIn.shared.step(item, .pressUp)
+                PinchStandIn.shared.step(item, .tapped)
+            }
+            try? await Task.sleep(for: .seconds(0.5))
+            feeding.cancel()
+            let spawned = station.cardCount > cardsBefore ? "a card spawned" : "no card spawned"
+            logStuck(station, case: 100 + itemNumber, "lifted run \(itemNumber), \(spawned)")
+            try? await Task.sleep(for: .seconds(0.5))
+        }
+        station.tuning.resetToDefaults()
+        labLoadLogger.info("Lab load lifted finished")
     }
 
     /// Logs the pluck station's container's status, `when` in case `number`.

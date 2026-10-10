@@ -43,7 +43,8 @@ surfaces, panels, handles, grids, and carried things.
 | Carry | A grab handle carries a thing 1:1 with the hand, by its middle, never nearer the head than 0.3 m. A pinch waits 8 pt before it carries. Core: `CarryPinch`, `HandCarry`, `ViewerCenteredFrame`, `CarryTuning`. Kit: `GrabHandle` and `GrabHandleComponent`, the drag `grabHandleCarry(of:…)` reporting each step through closures, and `grabHandlesCarryEntities(…)` with `CarriedEntity`, which move the entity themselves. Station: Carry and face. |
 | Facing | A thing turns to face the viewer, standing on a point or hanging from one, and keeps its way when the viewer is straight above or below it. Core: `Facing`, `Pose`, `FacingTuning`. Kit: `FacesTheViewerComponent` and its system, frame by frame, and `HeadTracker`, world tracking with the simulator's stand-in (`UntrackedHead`). Station: Carry and face. |
 | Placement | A panel opens below the gaze, a set distance out, tilted up to the head, and stays put until carried by its handle. Core: `GazePlacement`, `PanelHandle`, `PlacementTuning`. Kit: `GazePanel`, which stands a panel below the gaze, and `PanelHandleRig` with `PanelHandlePill`, the pill under a panel and its grab handle. Station: Below the gaze. |
-| Pluck | An item pulled out of a scrolling grid. A pinch is the grid's scroll unless it's a hold, as Alex asked: one the grid's scroll view scrolls with, or whose scroll offset moves a point from where it stood at the touch, whatever phase the scroll view says it's in, or that moves 10 pt along the scroll, the axes the container gives, vertical by default, or 40 pt any way, before its hold, is the grid's scroll for good; tracking, which the scroll view reports for every pinch from its touch, isn't scrolling. Held still a quarter second with none of those, the item lifts and the scroll stops under it. Lifted, it stays in the grid, held: it follows the hand a little, half the move at first and easing toward 20 pt, as a scroll view's content follows a pinch past its end (`PluckTether`), and the trace says how far the hand has gone of what it needs ("15.0 pt of 34.0 to break free"). A move mostly along the scroll, 10 pt and twice as far along it as across it and in depth, settles the item and gives the pinch back to the scroll (`givesLiftBackToScroll`, on by default), so by default an item can't be pulled out mostly along the scroll axis: up or down out of a grid that scrolls vertically. Whether the scroll view takes up a pinch given back to it, begun while its scroll was off, only the headset can say; if not, the pinch does nothing until it's let go, and nothing spawns. Once the hand has gone 2.5 cm, 34 pt at a window's own size, any other way from where it stood as the item lifted, and two tenths of a second have passed since the lift, the item breaks free and spawns into the room at the hand, settling back into the grid as it does, the scroll staying held until the pinch carrying what spawned lets go; let go before that, it settles, with nothing spawned and no tap. The break-free distance is the hand's: the drag's points are divided by the scale the window is drawn at. The pluck ends at the spawn, handing the pinch to a carry (below). Alex asked for the quarter second and the sticky lift on October 9, the half-second hold having felt long and the 6 mm pull then spawning the item the instant it lifted; that tuning, and the first-shipped 2 cm toward the viewer from the touch, stay a few values away. A pinch that moves less than the drag's 15 pt start in its first quarter second, then scrolls, still lifts, and the lift holds the scroll off until its move along the scroll gives the pinch back. `pluckContainer` marks the scroll view, with its scroll axes, `pluckable` each item, reporting its tap, its lift, `.spawned(at:)`, each `.carried(middle:handMoved:)` step, and `.released(at:)`. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go: its tap or its drag's end, or, with neither able to come, half a second with nothing heard; and a safety net lets the container's scroll go should its pinch's words never come (below, "When a pluck lets the scroll go"). |
+| Pluck | An item pulled out of a scrolling grid. A pinch is the grid's scroll unless it's a hold, as Alex asked: one the grid's scroll view scrolls with, or whose scroll offset moves a point from where it stood at the touch, whatever phase the scroll view says it's in, or that moves 10 pt along the scroll, the axes the container gives, vertical by default, or 40 pt any way, before its hold, is the grid's scroll for good; tracking, which the scroll view reports for every pinch from its touch, isn't scrolling. Held still a quarter second with none of those, the item lifts and the scroll stops under it. Lifted, it stays in the grid, held: it follows the hand a little, half the move at first and easing toward 20 pt, as a scroll view's content follows a pinch past its end (`PluckTether`), and the trace says how far the hand has gone of what it needs ("15.0 pt of 34.0 to break free"). A move mostly along the scroll, 10 pt and twice as far along it as across it and in depth, settles the item and gives the pinch back to the scroll (`givesLiftBackToScroll`, on by default), so by default an item can't be pulled out mostly along the scroll axis: up or down out of a grid that scrolls vertically. Whether the scroll view takes up a pinch given back to it, begun while its scroll was off, only the headset can say; if not, the pinch does nothing until it's let go, and nothing spawns. Once the hand has gone 2.5 cm, 34 pt at a window's own size, any other way from where it stood as the item lifted, and two tenths of a second have passed since the lift, the item breaks free and spawns into the room at the hand, settling back into the grid as it does, the scroll staying held until the pinch carrying what spawned lets go; let go before that, it settles, with nothing spawned and no tap. The break-free distance is the hand's: the drag's points are divided by the scale the window is drawn at. The pluck ends at the spawn, handing the pinch to a carry (below). Alex asked for the quarter second and the sticky lift on October 9, the half-second hold having felt long and the 6 mm pull then spawning the item the instant it lifted; that tuning, and the first-shipped 2 cm toward the viewer from the touch, stay a few values away. A pinch that moves less than the drag's 15 pt start in its first quarter second, then scrolls, still lifts, and the lift holds the scroll off until its move along the scroll gives the pinch back. `pluckContainer` marks the scroll view, with its scroll axes, `pluckable` each item, reporting its tap, its lift, `.spawned(at:)`, each `.carried(middle:handMoved:)` step, and `.released(at:)`. A lift stays up past a press that stopping the scroll may cancel, until the pinch is known to be let go: its tap or its drag's end, or, with neither able to come, half a second with nothing heard; and a safety net lets the container's scroll go should its pinch's words never come (below, "When a pluck lets the scroll go"). Nothing on the item but its button competes with the scroll view before the lift: the item's drag is held back by a 60 pt start, which Alex found safe, and brought down at the lift, or held back by its mask, or the lifted pinch is followed by the hand through hand tracking, as the tuning chooses (`PluckLiftedTracking`, below, "The item's drag, competing with the scroll"). |
+| HandPinch | A hand's pinch from hand tracking's thumb and index fingertips, closing below 2 cm and opening past 3.5 cm, let go once untracked three tenths of a second, and the hand a press came from, the one whose pinch closed nearest it. Core: `HandPinch`, `HandSide`, `HandPinchTuning`. Kit: `PinchTracker`, ARKit's hand tracking for an open immersive space, which an item follows a lifted pinch by. Station: Pluck. |
 | Lift | A view lifted off what it lies on: scaled up and brought toward the viewer on a spring, over its shadow, above its neighbors, coming down without the bounce; and drawn a little way along with a pinch that tugs it, on a quick spring, springing back as it lets go (`liftFollowEffect`). The pluck's items show it, and anything a press picks up can. |
 | Press | One pinch on a surface, from its touch, told as a tap, a drag along, a scroll, a drag across, a pickup and carry, or a hold, by how far it moves and how long it's still: held still half a second it picks up, lifting what's drawn; moved 2 cm then, it carries; held a second, it holds. `.surfacePress` on any SwiftUI view or attachment. |
 | Coast | A scroll let go on the move coasts on from the hand's speed, slowing by e every 0.8 s and coming to rest at an end rather than stopping dead; a pinch on it while it still goes 5 cm a second catches it, and is no tap. `CoastRun` runs one on a clock, `CoastEasing` animates by it. |
@@ -191,6 +192,66 @@ of scrolling, nor its pan begun, within 0.3 s: "the scroll view never took
 it". `-labLoad stuck` ends with the clip, through the real adapters; in the
 simulator the probe reads the scroll view "scrolling off, pan off" through
 the carry, and "scrolling on, pan on, pan possible" once it's let go.
+
+#### The item's drag, competing with the scroll
+
+That round's alarms caught the rest, in Alex's clip of October 10: single
+scrolls eaten, "the scroll view never took it", the scroll view's pan
+failing in the instant the item's drag first spoke. The drag, attached from
+the touch with a 15 pt start, competed with the scroll view for the pinch,
+and won whenever it reached its start before the pan reached its own. On
+the headset, a 60 pt start fixed it ("Putting drag start to like 60pt does
+actually fix the problem"). But a drag first speaking 60 pt from the touch
+does so past the 2.5 cm break-free distance, and the sticky stage is lost.
+
+So the tuning chooses how a lifted pinch is followed
+(`PluckTuning.liftedTracking`), switches in order:
+
+- **The drag held back by its start, brought down at the lift**, the
+  default: attached from the touch at 60 pt (`heldBackDragStart`), which
+  doesn't compete, and brought down to nothing at the lift, the scroll then
+  held off. Should the drag's recognizer take its new start mid-pinch, its
+  first word comes as soon as the hand moves, and stands for where the pinch
+  was as its item lifted, so the sticky stage, the break-free, and the
+  hand-off are as before. Should it not, the first word comes at 60 pt from
+  the touch, and the pinch is as with the start kept at 60 pt throughout:
+  the lifted item follows nothing until then, and breaks free at that word,
+  its pull armed, or at the next once it arms.
+- **The start kept at 60 pt throughout** (`lowersDragStartAtTheLift` off),
+  the known-safe fallback, as Alex tried it, with no sticky stage.
+- **The drag held back by its mask** (`holdsDragBackByItsMask`): left out of
+  the item's gestures until the lift, then let in. If a gesture let in
+  mid-pinch hears it, as with the start brought down; if not, no word comes
+  after the lift, the press gone as the lift stops the scroll, and the
+  quiet lets the lift go, half a second on, pulling nothing.
+- **The hand, by hand tracking** (`tracksLiftedPinchByHand`): from the lift
+  the item follows the hand whose pinch closed nearest its press
+  (`PinchTracker`, `HandPinch`), its fingertips' midpoint placed on the
+  item through its transform into the space, each move told to the pinch as
+  the drag's would be, from where the hand stood at the lift; its fingers
+  opening, or the hand lost three tenths of a second, are the drag's end.
+  No gesture is involved, so nothing competes and nothing need be let in
+  mid-pinch; it asks the person for hand tracking as the space opens, and
+  needs it open. The drag is held back beneath it as above, and follows the
+  pinch where the hand can't be followed. With the hand followed, a pinch's
+  first 60 pt make no difference: its words come from the hand.
+- **The drag from the touch**, at `dragStartDistance`, 15 pt, October 9's,
+  to compare (`holdsDragBack` off).
+
+Before the lift, with the drag held back, the hold is given up by the
+scroll view: its phase, its offset moving a point, or the button's press it
+cancels as it takes the pinch, its pan starting at about the hold's 10 pt
+along the scroll; and by the drag's word at 60 pt, a move that far being a
+scroll or a yank. A pinch moved across or toward the viewer by less than
+60 pt before the quarter second now lifts its item; its pull counts from
+the lift. Each pinch's trace says how it was followed: the drag's first word
+after the lift, how long after it, how far from the touch, and whether its
+start came down; the hand followed, which, and how near its pinch closed to
+the press; and its last lines, how many words came after the lift, or none.
+As the drag first speaks, a debug build's probe reads the scroll view's pan,
+then again a moment later, so a pan failing in step with the drag shows.
+`-labLoad lifted` pulls under each choice through the real adapters, the hand
+by the hand tracker's stand-in.
 
 ## The lab
 

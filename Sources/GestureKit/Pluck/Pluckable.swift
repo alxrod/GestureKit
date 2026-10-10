@@ -122,7 +122,11 @@ private struct PluckableItemModifier: ViewModifier {
         let drawn = content
             .modifier(PluckFollowDrawing(follow: driver.follow, isLifted: isLifted))
             .liftEffect(isLifted, style: lift)
-        let drag = DragGesture(minimumDistance: CGFloat(tuning.dragStartDistance), coordinateSpace: .local)
+        // The drag as the tuning chooses: held back until the lift, by its
+        // start or its mask, so it doesn't compete with the scroll view, or
+        // from the touch (`PluckLiftedTracking`).
+        let made = tuning.liftedTracking.drag(attached: driver.attachment.isAttached, tuning: tuning)
+        let drag = DragGesture(minimumDistance: CGFloat(made.startDistance), coordinateSpace: .local)
             .updating($dragIsActive) { _, isActive, _ in isActive = true }
             .onChanged { driver.dragChanged($0, setting(tuning)) }
             .onEnded { driver.dragEnded($0, setting(tuning)) }
@@ -135,9 +139,11 @@ private struct PluckableItemModifier: ViewModifier {
                 }
             }
             // One drag, attached beside the button's press, or as an
-            // ordinary gesture the button takes precedence over, as tuned.
-            .simultaneousGesture(drag, including: tuning.pullDragIsSimultaneous ? .all : .subviews)
-            .gesture(drag, including: tuning.pullDragIsSimultaneous ? .subviews : .all)
+            // ordinary gesture the button takes precedence over, as tuned;
+            // left out by its mask until the lift, should the tuning hold it
+            // back so.
+            .simultaneousGesture(drag, including: made.isLetIn && tuning.pullDragIsSimultaneous ? .all : .subviews)
+            .gesture(drag, including: made.isLetIn && !tuning.pullDragIsSimultaneous ? .all : .subviews)
             .onChange(of: dragIsActive) { _, isActive in
                 if !isActive { driver.dragStopped(setting(tuning)) }
             }

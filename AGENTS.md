@@ -10,8 +10,8 @@ the order the areas arrive in.
 
 - **GestureCore**: each gesture's rules and math, plain Swift, macOS 14+
   and visionOS 26, tested with `swift test` on the Mac. Areas: Carry,
-  Facing, Placement, Pluck, Press, Coast, and HoldWatch, and Lab, the
-  tuning and trace model the lab shares.
+  Facing, Placement, Pluck, Press, Coast, HoldWatch, and HandPinch, and Lab,
+  the tuning and trace model the lab shares.
 - **GestureKit**: the visionOS adapters that carry those rules out on any
   RealityKit entity or SwiftUI view, reporting through closures, and the
   lab's shared views. It re-exports GestureCore.
@@ -64,7 +64,8 @@ the order the areas arrive in.
     `.grabHandleCarry` take as their own drag's words while it listens, and
     a pluckable item, by its title, and its container take as their
     gestures' and scroll view's words (`PluckStep`), for the lab's loads
-    (see "Measuring the lab").
+    (see "Measuring the lab"); and `PinchTracker.standIn`, the hands' stand-in,
+    fed as hand tracking would feed it.
   - `pluckScrollViewProbe`, DEBUG only, in `Sources/GestureKit/Pluck/`:
     placed inside a pluckable scroll view's content, it reads what the UIKit
     scroll view behind SwiftUI's has, its scrolling, its pan and the pan's
@@ -199,8 +200,14 @@ stand in for a hand (`LabLoad`):
   each ("Lab load stuck: …"); then Alex's clip of October 10: a pluck
   through its break-free, carry, and release, the card carried by its own
   grab handle through `.grabHandleCarry`, and pinches told as scrolls, with
-  what the UIKit scroll view has after each step, once through. What a load
-  changes stays, as a hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
+  what the UIKit scroll view has after each step, once through. And
+  `lifted`, with `-station pluck`: a pull under each way a lifted pinch is
+  followed (`PluckLiftedTracking`), the drag held back by its start, brought
+  down, taking and not, kept at 60 pt, held back by its mask, hearing and
+  not, and the hand by the hand tracker's stand-in, each pinch saying only
+  what its gestures could, logging what each did ("Lab load lifted: …"),
+  once through, the tuning put back after. What a load changes stays, as a
+  hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
   `switch` the station it chose last remembered.
 - `-labTracing off` starts with the whole lab's tracing off, so a load
   measures the gestures with no trace; `on` starts with it on.
