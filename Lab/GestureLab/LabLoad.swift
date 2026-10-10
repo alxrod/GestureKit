@@ -386,6 +386,18 @@ enum LabLoad: String, CaseIterable {
         log("after a scroll on empty space")
     }
 
+    /// The stand-in hand the `lifted` load feeds hand tracking with: where it
+    /// is, and how far apart its fingertips, in meters.
+    @MainActor
+    private final class LiftedStandInHand {
+        var at: SIMD3<Float>
+        var gap: Float = 0.06
+
+        init(at: SIMD3<Float>) {
+            self.at = at
+        }
+    }
+
     /// One way of following a lifted pinch the `lifted` load tries: its name,
     /// the tuning's switches for it, and the drag's words after the lift, as
     /// translations from the touch, a tenth of a second apart; or the hand.
@@ -433,19 +445,20 @@ enum LabLoad: String, CaseIterable {
             let hand = SIMD3<Float>(Float(itemNumber) * 0.1 - 0.35, 1.3, -1.0)
             // The hand as hand tracking sees it, fed 20 times a second, as
             // it is now: where, and how far apart its fingertips.
-            var handAt = hand
-            var handGap: Float = 0.06
+            let standInHand = LiftedStandInHand(at: hand)
             let feeding = Task { @MainActor in
                 guard run.byHand else { return }
                 while !Task.isCancelled {
-                    PinchTracker.shared.standIn(.right, thumbTip: handAt - SIMD3(handGap / 2, 0, 0), indexTip: handAt + SIMD3(handGap / 2, 0, 0))
+                    let at = standInHand.at
+                    let gap = standInHand.gap
+                    PinchTracker.shared.standIn(.right, thumbTip: at - SIMD3(gap / 2, 0, 0), indexTip: at + SIMD3(gap / 2, 0, 0))
                     try? await Task.sleep(for: .milliseconds(50))
                 }
             }
             if run.byHand {
                 try? await Task.sleep(for: .seconds(0.1))
                 // The hand's pinch closing as the press comes.
-                handGap = 0.01
+                standInHand.gap = 0.01
                 try? await Task.sleep(for: .seconds(0.06))
             }
             PinchStandIn.shared.step(item, .pressDown)
@@ -454,10 +467,10 @@ enum LabLoad: String, CaseIterable {
                 // Held, then out 2 cm across, then 4 cm, carried, and let go.
                 for (step, move) in [SIMD3<Float>(0.002, 0, 0), SIMD3(0.01, 0, 0), SIMD3(0.02, 0, 0), SIMD3(0.04, 0.005, 0.01), SIMD3(0.08, 0.02, 0.05), SIMD3(0.12, 0.03, 0.08)].enumerated() {
                     try? await Task.sleep(for: .seconds(step == 3 ? 0.15 : 0.1))
-                    handAt = hand + move
+                    standInHand.at = hand + move
                 }
                 try? await Task.sleep(for: .seconds(0.15))
-                handGap = 0.06
+                standInHand.gap = 0.06
                 try? await Task.sleep(for: .seconds(0.1))
                 PinchStandIn.shared.step(item, .pressUp)
                 PinchStandIn.shared.step(item, .tapped)

@@ -18,9 +18,11 @@ rather than in the simulator, which can't pinch.
   lifts and the scroll stops, until your hand moves along the scroll, which
   gives the pinch back to it; lifted, it follows your hand a little, held,
   until you've gone about 2.5 cm any other way, when it breaks free into
-  the room at your hand and the item settles back into the grid. However
-  a pinch's words come, or don't, the grid's scroll is never held for
-  long past it: a safety net lets it go.
+  the room at your hand and the item settles back into the grid. Nothing
+  on the item competes with the scroll before the lift: its drag is held
+  back until then, or the lifted pinch is followed by your hand through
+  hand tracking, as tuned. However a pinch's words come, or don't, the
+  grid's scroll is never held for long past it: a safety net lets it go.
   From there the same pinch carries it by Carry's own rules. Mark the
   scroll view `pluckContainer` and each item `pluckable`, and act on what
   each reports: its tap, its lift, where it spawns, and each step of its
@@ -28,6 +30,9 @@ rather than in the simulator, which can't pinch.
 - **Lift**: a view lifted off what it lies on, scaled up and brought toward
   you on a spring, over its shadow, and drawn a little way along as a pinch
   tugs it.
+- **HandPinch**: a hand's pinch from hand tracking's fingertips, and the
+  hand a press came from; `PinchTracker` follows a pinching hand, as a
+  pluckable item can follow its lifted pinch.
 - **Press**: one pinch on a surface, told as a tap, a drag along or across,
   a pickup and carry, or a hold. Held still, what you pinched lifts toward
   you, and a move then carries it.
