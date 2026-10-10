@@ -126,10 +126,15 @@ final class PluckItemDriver {
 
     /// The pull's drag moved.
     func dragChanged(_ value: DragGesture.Value, _ setting: Setting) {
-        adopt(setting)
         let moved = value.translation3D
-        let translation = SIMD3(moved.x, moved.y, moved.z)
-        lastLocation = value.location3D
+        dragMoved(SIMD3(moved.x, moved.y, moved.z), at: value.location3D, setting)
+    }
+
+    /// The pull's drag moved `translation` from where the pinch touched, to
+    /// `location`, both in the item's points.
+    func dragMoved(_ translation: SIMD3<Double>, at location: Point3D, _ setting: Setting) {
+        adopt(setting)
+        lastLocation = location
         // The drag's first word of a pinch is kept; the rest note the time.
         setting.model?.heard(pinches.isDragging ? nil : "drag spoke", from: self)
         apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter(setting), at: .now), word: "drag", translation: translation)
@@ -137,9 +142,14 @@ final class PluckItemDriver {
 
     /// The pull's drag ended, let go.
     func dragEnded(_ value: DragGesture.Value, _ setting: Setting) {
+        dragEnded(at: value.location3D, setting)
+    }
+
+    /// The pull's drag ended, let go at `location`, in the item's points.
+    func dragEnded(at location: Point3D, _ setting: Setting) {
         adopt(setting)
         setting.model?.heard("drag end", from: self)
-        lastLocation = value.location3D
+        lastLocation = location
         apply(pinches.dragEnded(at: .now), word: "drag end")
         // An item with no button hears its tap as the drag's end of a pinch
         // nothing else told.

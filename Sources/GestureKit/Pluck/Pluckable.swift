@@ -140,7 +140,32 @@ private struct PluckableItemModifier: ViewModifier {
             // it spawned is taken away here, and it's let down.
             .onDisappear { driver.itemWent() }
             .raisedWhileLifted(isLifted)
+            #if DEBUG
+            .modifier(PluckStandInListener(adapter: .pluckItem(title)) { standInStep($0) })
+            #endif
     }
+
+    #if DEBUG
+    /// A word of the hand's stand-in (`PinchStandIn`), as the item's button
+    /// and drag would say it, through the same calls: a drag touched 130 pt
+    /// in from the item's corner and moved as it says.
+    private func standInStep(_ step: PinchStandIn.PluckStep) {
+        let setting = setting(context?.tuning ?? .defaults)
+        let touch = SIMD3<Double>(130, 130, 0)
+        switch step {
+        case .pressDown: driver.pressChanged(true, setting)
+        case .pressUp: driver.pressChanged(false, setting)
+        case .tapped: driver.tapped(setting)
+        case .dragMoved(let points):
+            let at = touch + points
+            driver.dragMoved(points, at: Point3D(x: at.x, y: at.y, z: at.z), setting)
+        case .dragEnded: driver.dragEnded(at: Point3D(x: touch.x, y: touch.y, z: touch.z), setting)
+        case .dragStopped: driver.dragStopped(setting)
+        case .itemWent: driver.itemWent()
+        case .scrollPhase: break
+        }
+    }
+    #endif
 
     /// The item as its press is heard: a button, whose press the hold counts
     /// from and whose tap is the item's, or, with the hold counted from the

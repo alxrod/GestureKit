@@ -415,6 +415,12 @@ private struct PluckContainerModifier: ViewModifier {
             .onDisappear {
                 model.disappeared()
             }
+            #if DEBUG
+            // The hand's stand-in's word for the scroll view's phase.
+            .modifier(PluckStandInListener(adapter: .pluckContainer) { step in
+                if case .scrollPhase(let phase) = step { model.scrollPhaseChanged(to: phase) }
+            })
+            #endif
             .environment(\.pluckContainerContext, PluckContainerContext(model: model, tuning: tuning, recorder: recorder, scrollAxes: scrollAxes))
     }
 }

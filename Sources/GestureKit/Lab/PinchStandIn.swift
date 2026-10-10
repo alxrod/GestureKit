@@ -1,4 +1,5 @@
 #if os(visionOS) && DEBUG
+import GestureCore
 import RealityKit
 import SwiftUI
 
@@ -19,6 +20,15 @@ import SwiftUI
 ///     PinchStandIn.shared.isListening = true   // as the app starts
 ///     PinchStandIn.shared.step(.surfacePress, .moved(points: SIMD3(120, 0, 0)))
 ///     PinchStandIn.shared.step(.surfacePress, .released)
+///
+/// A pluckable item, by its title, and its container take words of their
+/// own (`PluckStep`), each of the words their gestures and scroll view say,
+/// so a load can say them in any order, or leave any out, as the pluck's
+/// replays do (`PluckEndReplayTests`), and watch the real adapter's status
+/// and alarm:
+///
+///     PinchStandIn.shared.step(.pluckItem("item 7"), .pressDown)
+///     PinchStandIn.shared.step(.pluckItem("item 7"), .pressUp)
 @_spi(PinchStandIn) @MainActor
 public final class PinchStandIn {
     /// The one stand-in every adapter listens to.
@@ -33,6 +43,33 @@ public final class PinchStandIn {
         case surfacePress
         case holdWatch
         case grabHandleCarry
+        /// The pluckable item titled so (`pluckable(_:title:perform:)`).
+        case pluckItem(String)
+        /// Every pluckable container (`pluckContainer(_:tuning:trace:scrollAxes:)`).
+        case pluckContainer
+    }
+
+    /// One word a pluckable item's gestures, or its container's scroll view,
+    /// say.
+    public enum PluckStep: Sendable {
+        /// The item's button pressed, as a pinch touches it.
+        case pressDown
+        /// Its press ended, let go or cancelled.
+        case pressUp
+        /// Its button's tap.
+        case tapped
+        /// Its pull's drag moved, `points` from where the pinch touched, in
+        /// the item's points: across, down, and toward the viewer.
+        case dragMoved(points: SIMD3<Double>)
+        /// Its pull's drag ended (`onEnded`).
+        case dragEnded
+        /// Its pull's drag's gesture state went false, as it does as the
+        /// drag ends or is cancelled.
+        case dragStopped
+        /// The item left its container.
+        case itemWent
+        /// The container's scroll view's phase changed.
+        case scrollPhase(PluckScrollPhase)
     }
 
     /// One word of a stand-in pinch.
@@ -48,6 +85,7 @@ public final class PinchStandIn {
     }
 
     private var listeners: [Adapter: [UUID: (Step) -> Void]] = [:]
+    private var pluckListeners: [Adapter: [UUID: (PluckStep) -> Void]] = [:]
 
     private init() {}
 
@@ -60,6 +98,15 @@ public final class PinchStandIn {
         return handlers.count
     }
 
+    /// Hands the pluck's `step` to every adapter of the kind `adapter`
+    /// listening, and says how many took it.
+    @discardableResult
+    public func step(_ adapter: Adapter, _ step: PluckStep) -> Int {
+        let handlers = pluckListeners[adapter] ?? [:]
+        for handler in handlers.values { handler(step) }
+        return handlers.count
+    }
+
     /// Starts handing `adapter`'s steps to `handler`, until `stopListening`.
     func listen(as adapter: Adapter, _ handler: @escaping (Step) -> Void) -> UUID {
         let id = UUID()
@@ -67,8 +114,39 @@ public final class PinchStandIn {
         return id
     }
 
+    /// Starts handing `adapter`'s pluck steps to `handler`, until
+    /// `stopListening`.
+    func listen(as adapter: Adapter, toPluck handler: @escaping (PluckStep) -> Void) -> UUID {
+        let id = UUID()
+        pluckListeners[adapter, default: [:]][id] = handler
+        return id
+    }
+
     func stopListening(_ id: UUID) {
         for adapter in listeners.keys { listeners[adapter]?[id] = nil }
+        for adapter in pluckListeners.keys { pluckListeners[adapter]?[id] = nil }
+    }
+}
+
+/// A pluck adapter's ear for the stand-in, as `PinchStandInListener` is the
+/// others': listens while the view is on screen, if the stand-in listens as
+/// it appears.
+struct PluckStandInListener: ViewModifier {
+    let adapter: PinchStandIn.Adapter
+    let handler: (PinchStandIn.PluckStep) -> Void
+    @State private var listening: UUID?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                guard PinchStandIn.shared.isListening, listening == nil else { return }
+                listening = PinchStandIn.shared.listen(as: adapter, toPluck: handler)
+            }
+            .onDisappear {
+                guard let listening else { return }
+                PinchStandIn.shared.stopListening(listening)
+                self.listening = nil
+            }
     }
 }
 
