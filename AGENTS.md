@@ -36,9 +36,14 @@ the order the areas arrive in.
     through its key path, a `Double`, `Float`, `CGFloat`, `Duration`, or
     `Bool`; fitted to its range and step, and shown with its unit.
   - `TuningValue`: a number or a switch, coded as a bare JSON value.
-  - `TraceLog`: the last interactions with a gesture, newest first
+  - `TraceLog`: the last 12 interactions with a gesture, newest first
     (`TracedInteraction`), each with its timed events (`TraceEvent`), its
-    outcome, and a one-line summary.
+    outcome, and a one-line summary. An event of the same name as the one
+    before it, within a second, folds into its line, as a drag's words do:
+    how many, the first's and the latest's time and detail, and the
+    farthest any reached (`TraceMeasure`); a change of name always begins a
+    line, and an interaction with ten lines folds a name it has had into
+    that name's latest line.
   - `TracePacing`: when a trace shows its log's changes: the first after a
     quiet spell at once, then at most once a tenth of a second.
 - `Sources/GestureKit/<Area>/`: an area's adapters, wrapped whole in
@@ -47,9 +52,17 @@ the order the areas arrive in.
   - `TraceRecorder` and `InteractionTrace`: an observable trace an adapter
     is handed, optionally, which logs each finished interaction's summary,
     and gives what a trace shows of it paced (`shownLog`, `TracePacing`).
-  - `TraceView`: a recorder's interactions as timelines, large and white on
-    black, laid out in the room it's offered alone, so an event lays out
-    nothing beside it.
+    While it isn't recording (`isRecording`), `begin` gives nil, making no
+    title, so an adapter does no tracing work, as one with no recorder.
+  - `TraceView`: a recorder's interactions, the newest two in full and the
+    rest a line or two each, white on black at 14-17 pt, laid out in the
+    room it's offered alone, so an event lays out nothing beside it, and
+    changes its own line or adds one; given a switch, it shows it in its
+    header.
+  - `PinchStandIn`, DEBUG only, behind `@_spi(PinchStandIn)`: a hand's
+    stand-in, whose steps `.surfacePress`, `.holdWatch`, and
+    `.grabHandleCarry` take as their own drag's words while it listens, for
+    the lab's loads (see "Measuring the lab").
   - `TuningStore`: a tuning tuned live, saved in `UserDefaults` under a
     namespace; a set that changes nothing tells no one.
   - `TuningPanel`: any tuning's sliders and switches, Defaults, and Copy
@@ -70,10 +83,13 @@ the order the areas arrive in.
       immersive space; registers every station's components as it starts.
     - `LabStation`: what a station is. `LabStations`: the registry, one
       line per station.
-    - `LabModel`: the stations, the chosen one, remembered, and whether
-      the space is open.
+    - `LabModel`: the stations, the chosen one, remembered, whether the
+      space is open, and which stations trace: a switch for the whole lab
+      and one for each station, remembered, which set each station's
+      recorder's `isRecording`.
     - `LabWindow`: the station list and the chosen station's window
-      content, tuning, and trace; it opens the chosen station's own window,
+      content, tuning, and trace, with the whole lab's trace switch in its
+      toolbar and the station's in its trace's header; it opens the chosen station's own window,
       if it has one, and closes it as another is chosen
       (`StationOwnWindow`, its trace in an ornament beside it). `LabSpace`:
       the space's view, and where stations stand (`LabSpace.front`).
@@ -111,9 +127,18 @@ the order the areas arrive in.
   other area would use, and add no internal extensions on standard types:
   two files' helpers of one name make each other's uses ambiguous.
 - Log with `os.Logger(subsystem: "net.alexbrodriguez.gesturekit", category:
-  <type name>)`, at info level for what a person's console should show.
-  Anything an app hands in, such as a trace's titles, logs at the default
-  privacy unless the app asks otherwise.
+  <type name>)`, at info level for what a person's console should show:
+  at most one line for each finished interaction, the trace's summary when
+  it's traced, and otherwise the adapter's own; nothing at info for each
+  word of a drag, and no words made for a trace that isn't recording (test
+  the `InteractionTrace?`, as `if let trace`, before working them out).
+  Name an entity by its name: `String(describing:)` writes out every
+  component and child it has. Anything an app hands in, such as a trace's
+  titles, logs at the default privacy unless the app asks otherwise.
+- An adapter keeps what changes at each word of its drag in a reference
+  held once in `@State`, never in `@State` itself, whose every change runs
+  the modifier's body again, its gestures and all; what it draws from a
+  pinch, as a press's lift, is an observable read by a modifier of its own.
 - Register every custom RealityKit `Component` and `System` before
   anything uses it: a station does so in its `registerComponents()`, which
   the app calls in its `init()`.
@@ -154,19 +179,43 @@ stand in for a hand (`LabLoad`):
   first number slid across its range, set 60 times a second; `pull`, the
   pluck's card moved 90 times a second; `scroll`, the pluck's grid scrolled
   at 1,500 pt a second; `drag`, the press's playhead moved 90 times a
-  second; `coast`, the press's playhead flicked every 2 s; and `switch`,
-  the next station chosen every 4 s. What a load changes stays, as a
+  second; `coast`, the press's playhead flicked every 2 s; `switch`, the
+  next station chosen every 4 s; and three that drive an adapter through
+  the hand's stand-in (`PinchStandIn`), 90 words a second for 2 s, let go,
+  and again: `surface`, a drag along the press's surface through
+  `.surfacePress`; `tab`, a hold on the press's tab through `.holdWatch`;
+  and `handle`, the carry and face station's middle panel carried round a
+  circle through `.grabHandleCarry`. What a load changes stays, as a
   hand's would: `tuning` leaves its value tuned, saved, until Defaults, and
   `switch` the station it chose last remembered.
+- `-labTracing off` starts with the whole lab's tracing off, so a load
+  measures the gestures with no trace; `on` starts with it on.
 
 Build the lab for the simulator into a throwaway DerivedData, install it on
 a simulator of your own with `xcrun simctl install`, launch it with
 `xcrun simctl launch <device> net.alexbrodriguez.gesturelab -station pluck
 -labLoad pull`, and read the app's CPU from its CPU time, `ps -o time= -p
-<pid>`, over 15 s or so, and where it goes with `sample <pid> 5`. In a
-Debug build, each station idles at about 0% of a core, and each load costs
-8-30%; until the trace and the tuning's sliders stopped laying out the
-whole window, the trace load cost up to 54% and the tuning load 100%.
+<pid>`, over 15 s or so, and where it goes with `sample <pid> 5`; the
+render server is the simulator's `backboardd`, a child of the device's
+`launchd_sim`, which idles at about 30% of a core and swings 5 points from
+run to run. A `tuning` load leaves its value saved in the app's container,
+not in the simulator's own defaults: clear it between runs with `xcrun
+simctl spawn <device> defaults delete <container>/Library/Preferences/net.alexbrodriguez.gesturelab`,
+the container from `xcrun simctl get_app_container <device>
+net.alexbrodriguez.gesturelab data`.
+
+In a Debug build, each station idles at about 0% of a core. The trace load
+costs 7-11% of a core, and 41-51% in the render server; with tracing off,
+nothing. Until the trace folded its runs and showed fewer, smaller lines,
+it cost 11-17% and 51-62%, its text laid out again by Core Text at each
+change about half of what the main thread did, and until the trace and the
+tuning's sliders stopped laying out the whole window, up to 54%, with the
+tuning load at 100%. The tuning loads cost 17-30%, the pluck's pull and
+scroll about 20%, and the adapters' loads, traced, 5-10%: `handle` about
+10%, from 25-35% while the carry described its entity whole in its info
+lines and the trace drew a line at each step; `surface` about 8%, and `tab`
+about 5%, each a few points less untraced. The machine was shared and busy
+as these were measured, so take each to a few points.
 
 A view that changes at a hand's every step lays out nothing beside it and
 is read by nothing that doesn't show it: the trace takes its room whatever

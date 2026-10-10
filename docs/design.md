@@ -60,7 +60,9 @@ space, opened at launch.
 
 - **The window** lists the stations, each with a one-line summary. For the
   one chosen it shows the station's own window content (how to try it, and
-  anything it shows as it's tried), its tuning panel, and its trace.
+  anything it shows as it's tried), its tuning panel, and its trace, with a
+  switch that turns its tracing off; a switch in the toolbar turns the
+  whole lab's off, both remembered.
 - **A station's own window**, for a gesture that lives in a window, as an
   item in a scrolling grid does: the lab opens it beside its own as the
   station is chosen, with a button to open it again, and closes it as
@@ -88,15 +90,30 @@ begins an interaction as a pinch touches (`recorder?.begin("Pluck", title:
 "Pinch on item 4")`), writes each thing that happens to the
 `InteractionTrace` that gives it (`trace?.event("lift", "held still 0.50
 s")`), and finishes it with its outcome (`trace?.finish("pull")`). The
-recorder keeps the last 30 interactions, newest first (`TraceLog`), the
-window's `TraceView` shows each as a timeline, large and white on black so a
-screen recording on the headset reads it, and each finished one's summary is
-logged at info level, one line, for the console. The trace shows the log's
-changes at most ten times a second (`TracePacing`), and lays itself out in
-the room it's offered alone, so a gesture writing it as a hand moves draws
-nothing else again:
+recorder keeps the last 12 interactions, newest first (`TraceLog`). A run of
+events of one name, one after another within a second, as a drag's words
+come, folds into one line: how many, the first's and the latest's time and
+detail, and the farthest any reached where the event gives a measure
+(`TraceMeasure`); a change of name, a stage, always begins a line, and once
+an interaction has ten lines a name it has had folds into that name's latest
+line. The window's `TraceView` shows the newest two interactions in full and
+the older ones in a line or two, white on black, sized so a screen recording
+on the headset reads it, and each finished one's summary is logged at info
+level, one line, for the console. The trace shows the log's changes at most
+ten times a second (`TracePacing`), and lays itself out in the room it's
+offered alone, so a gesture writing it as a hand moves draws nothing else
+again:
 
-    #3 Trace check · Pinch on the cube → tap, 0.13 s: touch +0.00 s (size 0.20 m); release +0.12 s (moved 0.2 cm)
+    #3 Carry · Pinch on handle of panel-b → carried 0.42 m, 1.30 s: touch +0.00 s (carries after 8.0 pt); begin +0.05 s (after 9.5 pt, carries 'panel-b' from (0.00, 1.35, -1.00) m); carry ×5 +0.39–1.10 s (farthest 0.48 m; hand 0.10 m out, middle at (-0.05, 1.44, -1.00) m … hand 0.48 m out, middle at (0.38, 1.40, -1.00) m); release +1.30 s (released: …)
+
+A recorder that isn't recording (`isRecording`) gives no trace from `begin`,
+so an adapter handed it makes no title or detail and does no tracing work,
+as one handed no recorder; the lab turns it off with a switch in its
+window's toolbar, for the whole lab, or one in each trace's header, for its
+station. Either way, the console gets at most one info line for each
+finished interaction: the trace's summary when it's traced, and otherwise
+the adapter's own line, if it has one for what happened; nothing is logged
+at info for each word of a drag.
 
 ### How tuning flows
 
