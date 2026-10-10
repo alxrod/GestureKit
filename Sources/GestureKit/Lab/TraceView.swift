@@ -99,7 +99,8 @@ private struct TraceViewContent: View {
 /// One interaction in the trace, drawn again only as it changes, or as it
 /// goes from the newest few to the older ones: an event added or folded, or
 /// its outcome given, which is all a `TraceLog` changes of an interaction,
-/// so an event redraws its own interaction's row and no other.
+/// so an event redraws its own interaction's row and no other. An alarm
+/// shows on red.
 private struct TraceInteractionRow: View, Equatable {
     let interaction: TracedInteraction
     let isExpanded: Bool
@@ -118,7 +119,7 @@ private struct TraceInteractionRow: View, Equatable {
                     .font(.system(size: 17, weight: .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                TraceOutcomePill(outcome: interaction.outcome, lasted: interaction.lasted)
+                TraceOutcomePill(outcome: interaction.outcome, lasted: interaction.lasted, isAlarm: interaction.isAlarm)
             }
             if isExpanded {
                 Text("\(interaction.gesture) · \(interaction.date.formatted(date: .omitted, time: .standard))")
@@ -136,19 +137,28 @@ private struct TraceInteractionRow: View, Equatable {
             }
         }
         .padding(10)
-        .background(.white.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(interaction.isAlarm ? Color.red.opacity(0.55) : Color.white.opacity(0.08), in: .rect(cornerRadius: 12))
         .accessibilityElement(children: .combine)
     }
 }
 
 /// An interaction's outcome and how long it lasted, or "under way", as a
-/// pill.
+/// pill; an alarm's, its outcome alone, in white on red.
 private struct TraceOutcomePill: View {
     let outcome: String?
     let lasted: Duration?
+    let isAlarm: Bool
 
     var body: some View {
-        if let outcome, let lasted {
+        if isAlarm, let outcome {
+            Text(outcome)
+                .font(.system(size: 15, weight: .bold))
+                .lineLimit(1)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(.red, in: .capsule)
+        } else if let outcome, let lasted {
             Text("\(outcome) · \(traceViewSecondsText(lasted)) s")
                 .font(.system(size: 15, weight: .bold).monospacedDigit())
                 .lineLimit(1)

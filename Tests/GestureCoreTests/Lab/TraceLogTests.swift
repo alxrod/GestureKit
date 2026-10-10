@@ -46,6 +46,22 @@ struct TraceLogTests {
         #expect(log.interactions[0].summary == "#1 Pluck · Pinch on item 4 → under way: lift +0.50 s")
     }
 
+    @Test("An alarm is an interaction marked so, which its summary says, its lines all its own")
+    func alarm() {
+        var log = TraceLog()
+        let plain = log.begin("Pluck", title: "Pinch on item 4", at: at(0), date: date)
+        let alarm = log.begin("Pluck", title: "Scroll held by item 4", at: at(10), date: date, isAlarm: true)
+        for number in 1...11 {
+            log.record("event \(number)", detail: "press up", in: alarm, at: at(10))
+        }
+        log.finish(alarm, outcome: "stuck", at: at(10))
+        #expect(log.interaction(withID: plain)?.isAlarm == false)
+        let shown = log.interaction(withID: alarm)
+        #expect(shown?.isAlarm == true)
+        #expect(shown?.events.count == 11)
+        #expect(shown?.headline == "#2 Pluck alarm · Scroll held by item 4 → stuck, 0.00 s")
+    }
+
     @Test("Interactions are kept newest first, the oldest going past the capacity")
     func capacity() {
         var log = TraceLog(capacity: 2)

@@ -91,6 +91,24 @@ public final class TraceRecorder {
         return InteractionTrace(id: id, recorder: self)
     }
 
+    /// Writes an alarm with `gesture`, on what `title` says: something found
+    /// wrong, as a hold no pinch backs, with a line for each of `lines`, a
+    /// name and what it says, and its outcome, all at once, which a trace
+    /// shows in red; and logs its summary, as any finished interaction's.
+    /// Nothing while it isn't recording, and false then, so the caller can
+    /// log a line of its own.
+    @discardableResult
+    public func alarm(_ gesture: String, title: String, lines: [(name: String, detail: String)], outcome: String) -> Bool {
+        guard isRecording else { return false }
+        let now = ContinuousClock.now
+        let id = log.begin(gesture, title: title, at: now, date: .now, isAlarm: true)
+        for line in lines {
+            log.record(line.name, detail: line.detail, in: id, at: now)
+        }
+        finish(id, outcome: outcome)
+        return true
+    }
+
     /// Forgets every interaction, as the trace's Clear does, which the trace
     /// shows at once.
     public func clear() {
