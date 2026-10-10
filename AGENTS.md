@@ -254,15 +254,16 @@ not where they stand.
 
        public static let parameters: [TuningParameter<CarryTuning>] = [
            .number(\.startDistance, key: "startDistance", title: "Start distance",
-                   unit: "pt", range: 0...30, step: 1),
-           .number(\.nearestToHead, key: "nearestToHead", title: "Nearest to the head",
+                   unit: "pt", range: 0...40, step: 1),
+           .number(\.nearestToHead, key: "nearestToHead", title: "Nearest the head",
                    unit: "m", range: 0.1...1, step: 0.01),
        ]
    }
    ```
 
    Each key is the property's name, which the tuning's initializer takes as
-   its label, so Copy tuning's Swift compiles.
+   its label, so Copy tuning's Swift compiles. Each title is a few plain
+   words, with its unit apart: the panel shows no help text.
 2. Its tests in `Tests/GestureCoreTests/<Area>/`, among them
    `#expect(CarryTuning.parameterProblems.isEmpty)`.
 3. Its adapters in `Sources/GestureKit/<Area>/`, wrapped in `#if
@@ -291,7 +292,7 @@ not where they stand.
    final class CarryStation: LabStation {
        let id = "carry"
        let title = "Carry"
-       let summary = "A panel carried by its grab handle, 1:1 with the hand."
+       let summary = "A panel carried by its grab handle."
        let tuning = TuningStore<CarryTuning>(namespace: "GestureLab.carry")
        let trace = TraceRecorder(logsSummariesPublicly: true)
 
@@ -310,8 +311,14 @@ not where they stand.
 
 A gesture that lives in a window, as an item in a scrolling grid does, gets
 a window of its own rather than the lab window's scrolling column: give the
-station an `ownWindowTitle`, "grid window", and its `ownWindowContent`, as
+station an `ownWindowTitle`, "Grid", and its `ownWindowContent`, as
 `Stations/Pluck/` does.
+
+Keep a station's text short: its summary one short sentence saying what the
+gesture is, its window content a sentence or two saying what to try, its
+buttons and switches a word or two, and its status lines terse, a debug
+read-out folded away behind Details. How the gesture works belongs in its
+doc comments, `docs/design.md`, and the README, not on screen.
 
 `Stations/TraceCheck/TraceCheckStation.swift` is a whole station to copy
 from.

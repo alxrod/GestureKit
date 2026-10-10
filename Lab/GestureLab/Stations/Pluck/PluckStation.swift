@@ -37,7 +37,7 @@ struct PluckLabCard: Identifiable, Equatable {
 final class PluckStation: LabStation {
     let id = "pluck"
     let title = "Pluck"
-    let summary = "Pull a numbered item out of a scrolling grid into the room."
+    let summary = "Pull an item out of a scrolling grid into the room."
     let tuning = TuningStore<PluckTuning>(namespace: "GestureLab.pluck")
     let carry = TuningStore<CarryTuning>(namespace: "GestureLab.pluck.carry")
     /// How a hand's pinch is told by hand tracking, should the pluck follow
@@ -89,7 +89,7 @@ final class PluckStation: LabStation {
     /// size, about eleven windows' worth to scroll.
     let itemCount = 120
 
-    let ownWindowTitle: String? = "grid window"
+    let ownWindowTitle: String? = "Grid"
 
     static func registerComponents() {
         GrabHandle.registerComponents()
@@ -102,8 +102,8 @@ final class PluckStation: LabStation {
     var tuningContent: some View {
         VStack(spacing: 0) {
             TuningPanel(tuning, title: "Pluck")
-            TuningPanel(handPinch, title: "The hand's pinch, by hand tracking")
-            TuningPanel(carry, title: "Carry, once it's out")
+            TuningPanel(handPinch, title: "Hand pinch")
+            TuningPanel(carry, title: "Carry")
         }
     }
 
@@ -255,25 +255,25 @@ private func pluckLabColor(of number: Int) -> Color {
 @MainActor
 private func pluckLabCardsText(_ station: PluckStation) -> String {
     switch station.cardCount {
-    case 0: "No cards in the room"
-    case 1: "1 card in the room"
-    case let count: "\(count) cards in the room"
+    case 0: "No cards"
+    case 1: "1 card"
+    case let count: "\(count) cards"
     }
 }
 
-/// The pluck's part of the lab's window: how to try it, and the cards.
+/// The pluck's part of the lab's window: what to try, and the cards.
 private struct PluckLabInstructions: View {
     let station: PluckStation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("The grid is in a window of its own, as a library's is, with the trace beside it. Scroll it: a pinch is the grid's scroll unless it's a hold, so a pinch that moves up or down even a little before the quarter second, or moves the grid at all, scrolls, however slowly it starts. Pinch an item and hold still a quarter second: it lifts, and the scroll stops. Move your hand across, toward you, or away and the lifted item follows a little, held to its place, pulling harder the farther you go; move it up or down instead and the item settles back and the pinch is the grid's scroll again. Let go now and it settles back. Go on, about 2.5 cm from where your hand was as it lifted, and it breaks free as a card at your hand, the item settling back into the grid. From there it's carried: it follows your hand 1:1, stops 30 cm from your head, faces you, and stays where you let go; later, carry it by the pill under it. Let go of a lifted item without moving and it settles within half a second, so the next pinch scrolls; hold it perfectly still that long and it settles too. The trace shows each pinch: why it stayed a scroll or lifted, how far the grid's content and your hand moved before the hold against what it allows, how far the held item stretched of what it needs to break free, the moment it broke free, and where it was let go. Whether the grid takes up a pinch given back to it, or does nothing until you let go, is what to watch; its switch in the tuning turns the give-back off. Under the grid, the status line says whether the scroll is held off, for which item and since when, and, side by side, what the scroll view was given, the container's hold, the watch's lifted item, what the scroll view itself has, its scrolling and its pan, and its last phase: after any pluck, lift, or scroll, it should read Scroll on, given on, and scrolling on, pan on, once you let go. Through a pull's carry the scroll stays held until you let go. A red alarm there and in the trace means the scroll stayed held with no pinch under way past half a second, the safety net had to let it go, the views disagreed, or a pinch told as a scroll got nothing from the scroll view: “the scroll view never took it”; its trace line has the state and the last ten things the grid heard. Before the lift, nothing on an item but its button hears the pinch: its drag is held back by a 60 pt start, brought down at the lift, so a scroll is never eaten. Each pinch's trace says whether the drag's first word after the lift came near the touch, its start brought down, or at 60 pt, not; at 60 pt the item breaks free at once, with no sticky stage. To try the others, in the tuning: keep the start at 60 pt throughout, the known-safe fallback; hold the drag back by its mask instead, and watch whether a word comes after the lift; or follow the hand, by hand tracking, which asks your permission, its trace saying which hand it follows.")
-                .font(.system(size: 18))
+            Text("Pinch and hold an item, then pull it into the room. A pinch that moves first scrolls.")
+                .font(.system(size: 20))
             HStack(spacing: 16) {
                 Text(pluckLabCardsText(station))
                     .font(.system(size: 22, weight: .semibold).monospacedDigit())
                 Spacer()
-                Button("Clear the room", systemImage: "trash") {
+                Button("Clear", systemImage: "trash") {
                     station.clearCards()
                 }
                 .disabled(station.cardCount == 0)
@@ -321,9 +321,9 @@ private struct PluckLabGridWindow: View {
     }
 }
 
-/// Below the pluck's grid: the grid's scroll and the pinch under way, in a
-/// view of its own (`PluckLabScrollStatus`); the cards in the room, what was
-/// last tapped, and Clear the room.
+/// Below the pluck's grid: the grid's scroll, in a view of its own
+/// (`PluckLabScrollStatus`); the cards in the room, what was last tapped,
+/// and Clear.
 private struct PluckLabGridStatus: View {
     let station: PluckStation
 
@@ -338,12 +338,14 @@ private struct PluckLabGridStatus: View {
                         .font(.system(size: 18).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Button("Clear the room", systemImage: "trash") {
+                Spacer()
+                Button("Clear", systemImage: "trash") {
                     station.clearCards()
                 }
                 .disabled(station.cardCount == 0)
             }
         }
+        .frame(width: 1000, alignment: .leading)
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
         .glassBackgroundEffect()
@@ -351,19 +353,21 @@ private struct PluckLabGridStatus: View {
     }
 }
 
-/// The grid's scroll, always in view, each view of its hold side by side:
-/// held off, for which item's pinch, since when and for how long, or on;
-/// what the scroll view was given; the container's own hold and lifted item;
-/// the watch's lifted item; what the scroll view itself has, as the debug
-/// build's probe reads it, and its last phase and when; the pinch under way,
-/// or the one the pluck's rules still keep with no gesture having it; what
-/// the views disagree on; and, in red, the last alarm. It reads only the
-/// container's status, which changes as an item lifts or settles, the
-/// scroll is held or let go, a gesture takes or lets go of a pinch, the
+/// The grid's scroll, always in view: on, or held off for which item's
+/// pinch, since when and for how long; what the views disagree on, in
+/// orange; and, in red, the last alarm. Details, folded away unless opened,
+/// and remembered, show each view of the hold side by side: what the scroll
+/// view was given, the container's own hold and lifted item, the watch's
+/// lifted item, what the UIKit scroll view itself has, as the debug build's
+/// probe reads it, and its last phase and when; and the pinch under way, or
+/// the one the pluck's rules still keep with no gesture having it. It reads
+/// only the container's status, which changes as an item lifts or settles,
+/// the scroll is held or let go, a gesture takes or lets go of a pinch, the
 /// scroll view says a phase or is read anew, or an alarm is raised, never at
 /// a drag's every word.
 private struct PluckLabScrollStatus: View {
     let container: PluckContainerModel
+    @AppStorage("GestureLab.pluck.showsScrollDetails") private var showsDetails = false
 
     var body: some View {
         let status = container.status
@@ -373,7 +377,7 @@ private struct PluckLabScrollStatus: View {
                     .fill(status.heldBy == nil ? Color.green : Color.orange)
                     .frame(width: 12, height: 12)
                 if let heldBy = status.heldBy, let since = status.heldSince {
-                    Text("Scroll held off for \(heldBy) since \(since.formatted(.dateTime.hour().minute().second()))")
+                    Text("Held by \(heldBy) since \(since.formatted(.dateTime.hour().minute().second()))")
                         .font(.system(size: 18, weight: .semibold))
                     Text(since, style: .timer)
                         .font(.system(size: 18).monospacedDigit())
@@ -382,53 +386,56 @@ private struct PluckLabScrollStatus: View {
                     Text("Scroll on")
                         .font(.system(size: 18, weight: .semibold))
                 }
+                Spacer()
+                Button(showsDetails ? "Less" : "Details", systemImage: showsDetails ? "chevron.up" : "chevron.down") {
+                    showsDetails.toggle()
+                }
+                .font(.system(size: 15))
             }
-            Text(pluckLabViewsText(status))
-                .font(.system(size: 15))
-                .lineLimit(3)
-            Text(pluckLabPinchText(status))
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            if showsDetails {
+                Text(pluckLabViewsText(status))
+                    .font(.system(size: 15).monospacedDigit())
+                    .lineLimit(3)
+                Text(pluckLabPinchText(status))
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
             if let disagreement = status.disagreement {
-                Text("Views disagree: \(disagreement)")
+                Text("Disagree: \(disagreement)")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.orange)
-                    .lineLimit(3)
+                    .lineLimit(showsDetails ? 3 : 1)
             }
             if let alarm = status.lastAlarm {
                 Text("Alarm ×\(status.alarms): \(alarm)")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.red)
-                    .lineLimit(4)
+                    .lineLimit(showsDetails ? 4 : 2)
             }
         }
-        .frame(width: 1000, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 }
 
-/// Each view of the grid's hold, as the status line says them side by side:
-/// "Given: on · Container: no hold, nothing lifted · Watch: nothing lifted ·
-/// Scroll view: scrolling on, pan on, pan possible · Last phase: idle at
-/// 10:02:01".
+/// Each view of the grid's hold, side by side: "Given on · Container: no
+/// hold, none lifted · Watch: none lifted · UIKit: scrolling on, pan on, pan
+/// possible · Phase: idle 10:02:01".
 private func pluckLabViewsText(_ status: PluckContainerStatus) -> String {
-    let given = status.scrollGiven.map { $0 ? "held off" : "on" } ?? "nothing yet"
-    let container = "\(status.containerHolds ? "holds" : "no hold"), \(status.containerLifted ? "an item lifted" : "nothing lifted")"
-    let lifted = status.lifted.map { "\($0) lifted" } ?? "nothing lifted"
+    let given = status.scrollGiven.map { $0 ? "held off" : "on" } ?? "nothing"
+    let container = "\(status.containerHolds ? "holds" : "no hold"), \(status.containerLifted ? "one lifted" : "none lifted")"
+    let lifted = status.lifted.map { "\($0) lifted" } ?? "none lifted"
     let scrollView = status.scrollView ?? "unread"
     let phase = status.lastPhase.map { phase in
-        "\(phase)\(status.lastPhaseDate.map { " at " + $0.formatted(.dateTime.hour().minute().second()) } ?? "")"
-    } ?? "none yet"
-    return "Given: \(given) · Container: \(container) · Watch: \(lifted) · Scroll view: \(scrollView) · Last phase: \(phase)"
+        "\(phase)\(status.lastPhaseDate.map { " " + $0.formatted(.dateTime.hour().minute().second()) } ?? "")"
+    } ?? "none"
+    return "Given \(given) · Container: \(container) · Watch: \(lifted) · UIKit: \(scrollView) · Phase: \(phase)"
 }
 
-/// The pinch under way, as the status line says it.
+/// The pinch under way, or the one the rules keep with no gesture having it.
 private func pluckLabPinchText(_ status: PluckContainerStatus) -> String {
-    guard let pinch = status.pinch else { return "No pinch under way" }
-    return status.pinchIsUnderWay
-        ? "Pinch under way on \(pinch)"
-        : "No pinch under way; the pluck still keeps one on \(pinch)"
+    guard let pinch = status.pinch else { return "No pinch" }
+    return status.pinchIsUnderWay ? "Pinch: \(pinch)" : "Kept, no pinch: \(pinch)"
 }
 
 /// The pluck's part of the space: each card that broke free of the grid,

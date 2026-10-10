@@ -3,7 +3,7 @@ import RealityKit
 import SwiftUI
 
 /// The station for placing a panel below the gaze: as the space opens, and
-/// at each press of Place below my gaze, a panel stands in front of the
+/// at each press of Place, a panel stands in front of the
 /// head, slightly below where it looks, tilted up to it, drawn so it looks
 /// as big as it would a meter out, and stays there as the head moves,
 /// until it's carried by the pill under it. A change to where the placement
@@ -13,7 +13,7 @@ import SwiftUI
 final class BelowTheGazeStation: LabStation {
     let id = "below-the-gaze"
     let title = "Below the gaze"
-    let summary = "A panel placed below your gaze, tilted up to you, carried by the handle under it, and placed again by a button."
+    let summary = "A panel placed below your gaze, tilted up to you."
     let placement = TuningStore<PlacementTuning>(namespace: "GestureLab.below-the-gaze.placement")
     let carry = TuningStore<CarryTuning>(namespace: "GestureLab.below-the-gaze.carry")
     let trace = TraceRecorder(logsSummariesPublicly: true)
@@ -117,22 +117,22 @@ final class BelowTheGazeStation: LabStation {
 
     /// Where the panel was placed, in a line.
     var placedText: String {
-        guard let placed else { return "Not placed yet" }
+        guard let placed else { return "Not placed" }
         return String(
-            format: "%.2f m out · %.1f° below your gaze · tilted up %.1f°",
+            format: "%.2f m out · %.1f° below gaze · tilted %.1f°",
             placed.distance, placed.belowTheGaze * 180 / .pi, placed.tilt * 180 / .pi
         )
     }
 }
 
-/// The below-the-gaze station's part of the window: how to try it, where
-/// the panel was placed and where it stood, and the button that places it.
+/// The below-the-gaze station's part of the window: what to try, where the
+/// panel was placed and where it stood, and the button that places it.
 private struct BelowTheGazeWindow: View {
     let station: BelowTheGazeStation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Look somewhere and press Place below my gaze: the panel stands in front of you, a little below where you look, tilted up to you, and stays there as you look around. Look far down or up and it stands no steeper than the tuning's steepest. Carry it by the pill under it, then place it again. Moving Distance, Below the gaze, or Steepest places it again as you slide; the handle's numbers move and size the pill at once.")
+            Text("Look somewhere and press Place. Carry the panel by its pill.")
                 .font(.system(size: 20))
             Text(station.placedText)
                 .font(.system(size: 18, weight: .medium).monospacedDigit())
@@ -140,7 +140,7 @@ private struct BelowTheGazeWindow: View {
                 Text("Let go at \(lastStood)")
                     .font(.system(size: 18, weight: .medium).monospacedDigit())
             }
-            Button("Place below my gaze", systemImage: "arrow.down.to.line") {
+            Button("Place", systemImage: "arrow.down.to.line") {
                 station.placeBelowTheGaze(because: "the window's button was pressed")
             }
         }
@@ -169,7 +169,7 @@ private struct BelowTheGazeSpace: View {
                     detail: placedText,
                     resized: { height in station.panelResized(toHeight: height) }
                 ) {
-                    Button("Place below my gaze", systemImage: "arrow.down.to.line") {
+                    Button("Place", systemImage: "arrow.down.to.line") {
                         station.placeBelowTheGaze(because: "the panel's button was pressed")
                     }
                     .font(.system(size: 20))

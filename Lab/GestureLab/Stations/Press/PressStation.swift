@@ -9,7 +9,7 @@ import SwiftUI
 /// - A tap drops a marker where it touched.
 /// - A drag along moves the playhead: by the hand's moves, and let go on
 ///   the move it coasts on, slowing, until a pinch catches it; or, with
-///   "A drag along scrolls" off, to where the pinch is on the surface, as a
+///   "Drag scrolls" off, to where the pinch is on the surface, as a
 ///   scrub, which never coasts.
 /// - A drag across does nothing.
 /// - Held still, the pinch picks the surface up, which pops toward the
@@ -24,7 +24,7 @@ import SwiftUI
 final class PressStation: LabStation {
     let id = "press"
     let title = "Press"
-    let summary = "A surface to tap, drag, flick, pick up and carry, or hold; and a tab watched for a hold."
+    let summary = "One pinch on a surface: a tap, drag, flick, pickup, or hold."
     let press = TuningStore<SurfacePress.Tuning>(namespace: "GestureLab.press")
     let lift = TuningStore<HoldLift.Tuning>(namespace: "GestureLab.press.lift")
     let coast = TuningStore<Coast.Tuning>(namespace: "GestureLab.press.coast")
@@ -143,38 +143,38 @@ final class PressStation: LabStation {
         case .tap(let along):
             markers.append(min(max(along, 0), length))
             markers = Array(markers.suffix(8))
-            lastEvent = String(format: "Tap at %.2f m: a marker", along)
+            lastEvent = String(format: "Tap at %.2f m", along)
         case .beginDragAlong(_, let to):
             playhead = min(max(to, 0), length)
-            lastEvent = "Drag along: the playhead follows the pinch"
+            lastEvent = "Dragging along"
         case .moveDragAlong(let to):
             playhead = min(max(to, 0), length)
         case .endDragAlong:
-            lastEvent = String(format: "Drag along ended at %.2f m", playhead)
+            lastEvent = String(format: "Dragged to %.2f m", playhead)
         case .ignoreDragAcross:
-            lastEvent = "Drag across: nothing"
+            lastEvent = "Drag across: ignored"
         case .giveUpHold:
-            if !event.press.isPickedUp { lastEvent = "Moved off: no pickup or hold" }
+            if !event.press.isPickedUp { lastEvent = "Moved: no hold" }
         case .pickUp:
-            lastEvent = "Picked up: move 2 cm to carry it"
+            lastEvent = "Picked up"
         case .putDown:
-            lastEvent = "Put down where it was"
+            lastEvent = "Put down"
         case .fireHold:
             showFlash("Held")
-            lastEvent = "Held a full second"
+            lastEvent = "Held"
         case .endHold:
             break
         case .beginScroll(let handMoved):
             scrollStart = playhead
             release = ReleaseVelocity(tuning: coast.tuning)
             scroll(by: handMoved)
-            lastEvent = "Scrolling the playhead: flick to coast"
+            lastEvent = "Scrolling"
         case .moveScroll(let handMoved):
             scroll(by: handMoved)
         case .endScroll(let coasting):
             endScroll(coasting: coasting)
         case .endCatch:
-            lastEvent = String(format: "Caught the coast at %.2f m", playhead)
+            lastEvent = String(format: "Caught at %.2f m", playhead)
         case .beginCarry(_, let handMoved):
             if refusesCarries {
                 event.refuseCarry(because: "the window refuses carries")
@@ -183,7 +183,7 @@ final class PressStation: LabStation {
             }
             carryStart = center
             carry(by: handMoved)
-            lastEvent = "Carrying the surface"
+            lastEvent = "Carrying"
         case .moveCarry(let handMoved):
             carry(by: handMoved)
         case .endCarry:
@@ -191,11 +191,11 @@ final class PressStation: LabStation {
             // carried, where the hand left it.
             center.z -= Self.carriedLift
             carryStart = nil
-            lastEvent = "Dropped where it was carried"
+            lastEvent = "Dropped"
         case .cancelCarry:
             if let carryStart { center = carryStart }
             carryStart = nil
-            lastEvent = "Carry cancelled: back where it was"
+            lastEvent = "Carry cancelled"
         }
     }
 
@@ -204,7 +204,7 @@ final class PressStation: LabStation {
         switch magnify {
         case .began:
             lengthAtMagnify = length
-            lastEvent = "Two hands: stretching"
+            lastEvent = "Stretching"
         case .changed(let magnification):
             guard let start = lengthAtMagnify, magnification.isFinite else { return }
             setLength(start * magnification, keepingLeftEnd: false)
@@ -226,14 +226,14 @@ final class PressStation: LabStation {
         let time = now()
         let velocity = release.velocity(at: time)
         guard coasting, let run = CoastRun(releasedAt: velocity, from: playhead, at: time, within: 0...length, tuning: coast.tuning) else {
-            lastEvent = String(format: "Let go at %.2f m, %.2f m/s: no coast", playhead, velocity)
+            lastEvent = String(format: "No coast: %.2f m/s at %.2f m", velocity, playhead)
             return
         }
         coastRun = run
         let traced = trace.begin("Coast", title: "Flick of the playhead")
         traced?.event("set out", String(format: "from %.3f m at %.2f m/s, to rest at %.3f m in %.2f s", run.start, velocity, run.end, run.coast.duration))
         coastTrace = traced
-        lastEvent = String(format: "Coasting from %.2f m/s", velocity)
+        lastEvent = String(format: "Coasting at %.2f m/s", velocity)
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(run.coast.duration))
             guard let self, self.coastRun == run else { return }
@@ -261,11 +261,11 @@ final class PressStation: LabStation {
     func tabDragEnded() {
         guard lengthAtTabDrag != nil else { return }
         lengthAtTabDrag = nil
-        lastEvent = String(format: "The tab's drag made the surface %.2f m", length)
+        lastEvent = String(format: "Resized to %.2f m", length)
     }
 
     func tabTapped() {
-        lastEvent = "The tab was tapped"
+        lastEvent = "Tab tapped"
         showFlash("Tab tapped")
     }
 
@@ -273,7 +273,7 @@ final class PressStation: LabStation {
     /// do nothing for the rest of the pinch.
     func tabHeld() -> Bool {
         showFlash("Tab held")
-        lastEvent = "The tab was held: its drag and tap do nothing now"
+        lastEvent = "Tab held"
         return true
     }
 
@@ -287,7 +287,7 @@ final class PressStation: LabStation {
         length = 1
         playhead = 0.3
         markers = []
-        lastEvent = "The surface was reset"
+        lastEvent = "Reset"
     }
 
     // MARK: Helpers

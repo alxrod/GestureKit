@@ -31,7 +31,7 @@ struct TraceCheckTarget: Component {}
 final class TraceCheckStation: LabStation {
     let id = "trace-check"
     let title = "Trace check"
-    let summary = "A cube to pinch: each pinch traced, its size tuned live."
+    let summary = "A cube to pinch, to check the trace and the tuning."
     let tuning = TuningStore<TraceCheckTuning>(namespace: "GestureLab.trace-check")
     let trace = TraceRecorder(logsSummariesPublicly: true)
 
@@ -101,13 +101,13 @@ final class TraceCheckStation: LabStation {
     }
 }
 
-/// The trace check's part of the window: how to try it, and the count.
+/// The trace check's part of the window: what to try, and the count.
 private struct TraceCheckWindow: View {
     let station: TraceCheckStation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Pinch the cube in front of you. Let go where you touched and it's a tap, which counts and changes its color; move a centimeter or more and it's a drag. Each pinch shows in the trace, and Size changes the cube as the slider moves.")
+            Text("Pinch the cube. Let go in place to tap; move to drag.")
                 .font(.system(size: 20))
             Text(station.taps == 1 ? "1 tap" : "\(station.taps) taps")
                 .font(.system(size: 28, weight: .bold).monospacedDigit())
