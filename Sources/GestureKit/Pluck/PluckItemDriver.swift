@@ -136,9 +136,27 @@ final class PluckItemDriver {
     func dragMoved(_ translation: SIMD3<Double>, at location: Point3D, _ setting: Setting) {
         adopt(setting)
         lastLocation = location
+        let isFirstWord = !pinches.isDragging
         // The drag's first word of a pinch is kept; the rest note the time.
-        setting.model?.heard(pinches.isDragging ? nil : "drag spoke", from: self)
+        setting.model?.heard(isFirstWord ? "drag spoke" : nil, from: self)
         apply(pinches.dragMoved(translation, pointsPerMeter: pointsPerMeter(setting), at: .now), word: "drag", translation: translation)
+        if isFirstWord { notePanAtTheDragsFirstWord(setting) }
+    }
+
+    /// What the scroll view's pan was doing as the drag first spoke, and a
+    /// turn of the main actor later, for the trace and the console: the
+    /// pan failing in step with the drag says the drag took the pinch from
+    /// the scroll. Only where a debug build's probe reads the scroll view.
+    private func notePanAtTheDragsFirstWord(_ setting: Setting) {
+        guard let reader = setting.model?.scrollViewReader, let now = reader() else { return }
+        let title = setting.title
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            let after = reader()
+            let line = "the scroll view as the drag first spoke: \(now.description); a moment later: \(after?.description ?? "unread")"
+            self?.trace?.event("pan", line)
+            pluckItemLogger.info("The pinch on \(title): \(line, privacy: .public)")
+        }
     }
 
     /// The pull's drag ended, let go.
@@ -481,8 +499,9 @@ final class PluckItemDriver {
         case .settle:
             let change = setting.model?.settle(setting.id, because: why.description)
             if case .givenBackToTheScroll = why {
+                // No scroll ruling: the scroll stays held off until this
+                // pinch lets go, so the scroll view can't take it.
                 pluckItemLogger.info("The pinch on \(setting.title) was given back to the scroll: \(why.description, privacy: .public)")
-                setting.model?.ruledAScroll(by: self)
             }
             var detail = why.description
             if let held = heldFarthest, !brokeFree {
@@ -492,7 +511,12 @@ final class PluckItemDriver {
             trace?.event("settle", detail)
             reportSettled()
         case .stayDown:
-            setting.model?.ruledAScroll(by: self)
+            // A move along the scroll past where the scroll view's pan
+            // starts is one the scroll view should take; a move across, or
+            // a scroll it took already, asks nothing of it.
+            if case .stayDown(.movedFirst) = action, pinches.farthestAlongScrollBeforeHold >= setting.tuning.holdStillnessAlongScroll {
+                setting.model?.ruledAScroll(by: self)
+            }
             let reason = switch why {
             case .containerScrolled: "its scroll view scrolled since the touch, a scroll"
             default: why.description

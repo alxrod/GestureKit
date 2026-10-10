@@ -378,9 +378,11 @@ struct PluckReplayGrid {
         case .settle:
             if container.settle(item).settled != nil { watch.settled(because: "its pinch", at: now) }
             mirror()
-            if case .givenBackToTheScroll = pinches[item]?.press?.why { ruledAScroll(item) }
-        case .stayDown:
-            ruledAScroll(item)
+        case .stayDown(.movedFirst):
+            // As the driver: a move along the scroll past its pan's start.
+            if let itemPinches = pinches[item], itemPinches.farthestAlongScrollBeforeHold >= tuning.holdStillnessAlongScroll {
+                ruledAScroll(item)
+            }
         default:
             break
         }
