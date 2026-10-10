@@ -127,7 +127,8 @@ import Testing
             "stopsScrollUnderLiftedItem", "givesLiftBackToScroll", "scrollSettlesLiftedItem", "pressEndSettlesLiftedItem",
             "quietRelease", "unheardHoldRelease", "unheardScrollHoldRelease", "scrollComesBackMidPinch",
             "releaseTapGrace", "holdsFromTheDrag", "pullDragIsSimultaneous",
-            "tracksLiftedPinchByHand", "attachesDragOnceLifted", "holdsDragBackByItsStart", "pushTowardViewer",
+            "holdsDragBack", "heldBackDragStart", "lowersDragStartAtTheLift", "holdsDragBackByItsMask",
+            "tracksLiftedPinchByHand", "pushTowardViewer",
             "liftScale", "liftDepth",
         ])
     }
@@ -142,7 +143,8 @@ import Testing
             stopsScrollUnderLiftedItem: false, givesLiftBackToScroll: false, scrollSettlesLiftedItem: false, pressEndSettlesLiftedItem: true,
             quietRelease: 0.8, unheardHoldRelease: 2, unheardScrollHoldRelease: 4, scrollComesBackMidPinch: true,
             releaseTapGrace: 0.5, holdsFromTheDrag: true, pullDragIsSimultaneous: false,
-            tracksLiftedPinchByHand: false, attachesDragOnceLifted: false, holdsDragBackByItsStart: true, pushTowardViewer: 60,
+            holdsDragBack: false, heldBackDragStart: 80, lowersDragStartAtTheLift: false, holdsDragBackByItsMask: true,
+            tracksLiftedPinchByHand: true, pushTowardViewer: 60,
             liftScale: 1.12, liftDepth: 48
         )
         #expect(tuned.tunedValues.count == PluckTuning.parameters.count)
