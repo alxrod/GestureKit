@@ -124,6 +124,70 @@ import simd
         #expect(pinch.move(distance: 40, translation: SIMD3(0.03, 0, 0)) { grabbed } == [])
     }
 
+    /// Each way a carry can end ends it once, and the pinch keeps how: let
+    /// go, cancelled, or its view gone mid-carry.
+    @Test(arguments: CarryEnding.allCases)
+    func eachEndingEndsTheCarryOnceAndIsKept(ending: CarryEnding) {
+        var pinch = CarryPinch<String>()
+        _ = pinch.move(distance: 30, translation: SIMD3(0.022, 0, 0)) { grabbed }
+        #expect(pinch.ending == nil)
+        #expect(pinch.end(ending) == [.endCarry(id: "a")])
+        #expect(pinch.stage == .over)
+        #expect(pinch.ending == ending)
+        for later in CarryEnding.allCases {
+            #expect(pinch.end(later) == [])
+        }
+        #expect(pinch.ending == ending)
+        #expect(pinch.move(distance: 40, translation: SIMD3(0.03, 0, 0)) { grabbed } == [])
+    }
+
+    /// An end with no ending named is a release, as a pinch let go.
+    @Test func anEndWithNoEndingNamedIsARelease() {
+        var pinch = CarryPinch<String>()
+        _ = pinch.move(distance: 30, translation: SIMD3(0.022, 0, 0)) { grabbed }
+        #expect(pinch.end() == [.endCarry(id: "a")])
+        #expect(pinch.ending == .released)
+    }
+
+    /// The first end the pinch is told is how it ended: a release that
+    /// comes after its gesture's cancel ends nothing, nor does a cancel
+    /// after a release, nor the view going after either.
+    @Test(arguments: [
+        (CarryEnding.cancelled, CarryEnding.released),
+        (.released, .cancelled),
+        (.cancelled, .viewWent),
+        (.released, .viewWent),
+        (.viewWent, .released),
+    ])
+    func theFirstEndToldIsHowItEnded(first: CarryEnding, second: CarryEnding) {
+        var pinch = CarryPinch<String>()
+        _ = pinch.move(distance: 30, translation: SIMD3(0.022, 0, 0)) { grabbed }
+        let actions = pinch.end(first) + pinch.end(second)
+        #expect(actions == [.endCarry(id: "a")])
+        #expect(pinch.ending == first)
+    }
+
+    /// A pinch that carried nothing, waiting, under nothing, or refused,
+    /// ends nothing, but says how it ended all the same.
+    @Test(arguments: CarryEnding.allCases)
+    func aPinchThatCarriedNothingSaysHowItEnded(ending: CarryEnding) {
+        var waiting = CarryPinch<String>()
+        _ = waiting.move(distance: 3, translation: SIMD3(0.002, 0, 0)) { grabbed }
+        #expect(waiting.end(ending) == [])
+        #expect(waiting.ending == ending)
+
+        var underNothing = CarryPinch<String>()
+        _ = underNothing.move(distance: 12, translation: SIMD3(0.009, 0, 0)) { nil }
+        #expect(underNothing.end(ending) == [])
+        #expect(underNothing.ending == ending)
+
+        var refused = CarryPinch<String>()
+        _ = refused.move(distance: 8, translation: SIMD3(0.0059, 0, 0)) { grabbed }
+        refused.refuse()
+        #expect(refused.end(ending) == [])
+        #expect(refused.ending == ending)
+    }
+
     /// A change that isn't a number moves nothing: waiting, it doesn't
     /// begin; moving, it carries nothing, and the carry goes on.
     @Test(arguments: [Float.nan, .infinity])
