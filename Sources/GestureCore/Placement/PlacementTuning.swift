@@ -110,13 +110,13 @@ extension PlacementTuning: Tunable {
     public static var defaults: PlacementTuning { .standard }
 
     public static let parameters: [TuningParameter<PlacementTuning>] = [
-        .number(\.distance, key: "distance", title: "Distance from the head",
+        .number(\.distance, key: "distance", title: "Distance",
                 unit: "m", range: 0.3...2, step: 0.01),
         .number(\.belowTheGazeDegrees, key: "belowTheGazeDegrees", title: "Below the gaze",
                 unit: "°", range: 0...60, step: 1),
-        .number(\.steepestDegrees, key: "steepestDegrees", title: "Steepest from level",
+        .number(\.steepestDegrees, key: "steepestDegrees", title: "Steepest",
                 unit: "°", range: 10...90, step: 1),
-        .number(\.looksAsBigAsAt, key: "looksAsBigAsAt", title: "Looks as big as at",
+        .number(\.looksAsBigAsAt, key: "looksAsBigAsAt", title: "Sized as at",
                 unit: "m", range: 0.3...3, step: 0.05),
         .number(\.leastLevelGaze, key: "leastLevelGaze", title: "Least level gaze",
                 range: 0.01...0.5, step: 0.01),
@@ -124,11 +124,11 @@ extension PlacementTuning: Tunable {
                 unit: "pt", range: 40...400, step: 1),
         .number(\.handleHeight, key: "handleHeight", title: "Handle height",
                 unit: "pt", range: 4...60, step: 1),
-        .number(\.handleGap, key: "handleGap", title: "Handle's gap below the panel",
+        .number(\.handleGap, key: "handleGap", title: "Handle gap",
                 unit: "pt", range: 0...80, step: 1),
-        .number(\.handleReachBeyondEnds, key: "handleReachBeyondEnds", title: "Handle's reach beyond its ends",
+        .number(\.handleReachBeyondEnds, key: "handleReachBeyondEnds", title: "Reach past ends",
                 unit: "pt", range: 0...80, step: 1),
-        .number(\.handleReachHeight, key: "handleReachHeight", title: "Handle's reach, tall",
+        .number(\.handleReachHeight, key: "handleReachHeight", title: "Reach height",
                 unit: "pt", range: 20...160, step: 1),
     ]
 }

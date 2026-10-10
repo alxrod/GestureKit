@@ -22,7 +22,7 @@
 ///         public static let defaults = Tuning()
 ///
 ///         public static let parameters: [TuningParameter<Tuning>] = [
-///             .number(\.nearestToHead, key: "nearestToHead", title: "Nearest to the head",
+///             .number(\.nearestToHead, key: "nearestToHead", title: "Nearest the head",
 ///                     unit: "m", range: 0.1...1, step: 0.01),
 ///             .toggle(\.facesTheViewer, key: "facesTheViewer", title: "Faces the viewer"),
 ///         ]

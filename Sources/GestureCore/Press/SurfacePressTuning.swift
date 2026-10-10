@@ -88,7 +88,7 @@ extension SurfacePress.Tuning: Tunable {
     /// its own (`HoldLift.Tuning`).
     public static let parameters: [TuningParameter<SurfacePress.Tuning>] = [
         .number(\.stillDistance, key: "stillDistance", title: "Still within", unit: "pt", range: 0...40, step: 0.5),
-        .number(\.dragDistance, key: "dragDistance", title: "A drag from", unit: "pt", range: 1...60, step: 0.5),
+        .number(\.dragDistance, key: "dragDistance", title: "Drag from", unit: "pt", range: 1...60, step: 0.5),
         .number(\.depthWeight, key: "depthWeight", title: "Depth counts", unit: "×", range: 0...2, step: 0.05),
         .number(\.carryDistance, key: "carryDistance", title: "Carries from", unit: "pt", range: 5...100, step: 1),
         .number(\.pickUpDelay, key: "pickUpDelay", title: "Picks up after", unit: "s", range: 0.1...2, step: 0.05),
@@ -104,7 +104,7 @@ extension HoldLift.Tuning: Tunable {
         .number(\.heldScale, key: "heldScale", title: "Held scale", unit: "×", range: 1...1.3, step: 0.005),
         .number(\.heldDepth, key: "heldDepth", title: "Held depth", unit: "m", range: 0...0.1, step: 0.0025),
         .number(\.popDuration, key: "popDuration", title: "Pop lasts", unit: "s", range: 0...1, step: 0.01),
-        .number(\.popOvershoot, key: "popOvershoot", title: "Pop overshoots by", range: 0...0.5, step: 0.01),
+        .number(\.popOvershoot, key: "popOvershoot", title: "Pop overshoot", range: 0...0.5, step: 0.01),
         .number(\.settleDuration, key: "settleDuration", title: "Settles over", unit: "s", range: 0.05...1.5, step: 0.01),
     ]
 }

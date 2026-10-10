@@ -127,6 +127,6 @@ extension HoldWatch.Tuning: Tunable {
         .number(\.duration, key: "duration", title: "Holds after", unit: "s", range: 0.1...2, step: 0.05),
         .number(\.stillDistance, key: "stillDistance", title: "Still within", unit: "pt", range: 0...40, step: 0.5),
         .number(\.depthWeight, key: "depthWeight", title: "Depth counts", unit: "×", range: 0...2, step: 0.05),
-        .number(\.heldTapGrace, key: "heldTapGrace", title: "Tap after a hold ignored for", unit: "s", range: 0...1, step: 0.05),
+        .number(\.heldTapGrace, key: "heldTapGrace", title: "Tap grace", unit: "s", range: 0...1, step: 0.05),
     ]
 }
