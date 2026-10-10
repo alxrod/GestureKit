@@ -77,7 +77,9 @@ the order the areas arrive in.
     unstepped, its value fitted to the step as it's set, since a stepped
     slider's marks made every slider in a window cost as any one moved.
 - `Tests/GestureCoreTests/<Area>/` and `Tests/GestureCoreTests/Lab/`: the
-  core's tests, a folder per area.
+  core's tests, a folder per area; and `ReadmeSnippetsTests`, which checks
+  each Swift block in `README.md` is exactly a file of
+  `Lab/GestureLab/ReadmeSnippets/`, and each of those files is shown.
 - `Lab/`: GestureLab.
   - `project.yml`: the xcodegen spec, the source of truth for
     `GestureLab.xcodeproj`, which is committed.
@@ -104,6 +106,12 @@ the order the areas arrive in.
       starter, a cube to pinch, traced, its size tuned live.
     - `LabLoad`, DEBUG only: a load the lab puts on itself, as a hand
       would, for measuring in the simulator (see "Measuring the lab").
+    - `ReadmeSnippets/`: the README's code, a file per Swift block, its text
+      after the file's leading comment the block's exactly, compiled with
+      the lab so it can't drift from the API, and used by nothing. Change a
+      snippet here, build the lab, then put the file's text in the README.
+      A block that can't compile here, as the package manifest, has
+      `<!-- Not compiled: … -->` on the line before its fence.
 - `scripts/build-check.sh`: the lab's compile check.
 - `docs/design.md`: the design.
 - `Local.xcconfig.example`: copy to `Local.xcconfig`, gitignored, and set
@@ -276,7 +284,9 @@ not where they stand.
    trace?.finish("carried 0.42 m")
    ```
 
-4. Its row in `docs/design.md`'s table and the README's list.
+4. Its row in `docs/design.md`'s table, and its section in the README:
+   what it does, when to use it, its tuning's key values and defaults, and
+   a snippet, compiled in `Lab/GestureLab/ReadmeSnippets/`.
 
 ## Adding a lab station
 
