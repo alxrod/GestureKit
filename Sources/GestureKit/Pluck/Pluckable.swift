@@ -18,11 +18,14 @@ public enum PluckEvent: Equatable, Sendable {
     /// The item lifted, held still; it shows lifted, following the hand a
     /// little, until it breaks free or settles.
     case lifted
-    /// The item settled back into its container.
+    /// The item settled back into its container: let go short of breaking
+    /// free, or as it broke free, what it pulls out spawning (`spawned`),
+    /// so the container's scroll goes on while the pinch carries that.
     case settled
     /// The item broke free: spawn what it pulls out here, the drag's place
-    /// pushed toward the viewer (`PluckTuning.pushTowardViewer`). The rest
-    /// of the pinch carries it (`carried`).
+    /// pushed toward the viewer (`PluckTuning.pushTowardViewer`). The item
+    /// settles back into its container at once (`settled`), and the rest of
+    /// the pinch carries what spawned (`carried`).
     case spawned(at: SIMD3<Float>?)
     /// The pinch carries what spawned, by the carry's own rule: its middle
     /// where it spawned plus the hand's translation since, 1:1, `handMoved`.
@@ -48,11 +51,13 @@ extension View {
     /// item lifts, and the container's scroll stops under it, as tuned;
     /// lifted, it follows the hand a little, held to its place, until the
     /// hand has gone 2.5 cm, when it breaks free and spawns into the room
-    /// at the hand, reported through `perform`. From there the pinch carries
-    /// what spawned by GestureCore's carry, each step reported as
-    /// `PluckEvent.carried`. A pinch let go before anything else is the
-    /// item's tap; one let go while the item is held, short of breaking
-    /// free, settles it, no tap.
+    /// at the hand, reported through `perform`, and settles back into its
+    /// grid. From there the pinch carries what spawned by GestureCore's
+    /// carry, each step reported as `PluckEvent.carried`. A pinch let go
+    /// before anything else is the item's tap; one let go while the item is
+    /// held, short of breaking free, settles it, no tap. A lift that
+    /// outlived its press hears nothing as it's let go, so it settles once
+    /// nothing has been heard for half a second (`PluckTuning.quietRelease`).
     ///
     /// `id` names the item among its container's; `title` names it in the
     /// trace and the log. The item draws its own lift and follow

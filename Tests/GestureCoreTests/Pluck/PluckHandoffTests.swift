@@ -107,7 +107,7 @@ import Testing
         #expect(pinches.dragMoved(SIMD3(0, 0, 20), pointsPerMeter: pointsPerMeter, at: at(0.5)).actions == [])
         #expect(pinches.follow.z > 0)
         let free = pinches.dragMoved(SIMD3(0, 0, 34), pointsPerMeter: pointsPerMeter, at: at(0.6))
-        #expect(free.actions == [.breakFree])
+        #expect(free.actions == [.breakFree, .settle])
         #expect(pinches.follow == .zero)
         // The caller spawns, and hands over.
         var handoff = try #require(PluckHandoff(carrying: 7, spawnedAt: spawnedAt, handAt: handAt))
@@ -126,7 +126,7 @@ import Testing
         #expect(isClose(handMoved, hand))
 
         let letGo = pinches.dragEnded(at: at(1.1))
-        #expect(letGo.actions == [.releaseSpawned, .settle])
+        #expect(letGo.actions == [.releaseSpawned])
         #expect(handoff.end() == [.endCarry(id: 7)])
         let account = try #require(pinches.pressEnded(at: at(1.1)).ended)
         #expect(account.outcome == .pull)
@@ -141,6 +141,6 @@ import Testing
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = pinches.armPull(at: at(0.45))
         _ = pinches.dragMoved(SIMD3(40, 0, 0), pointsPerMeter: pointsPerMeter, at: at(0.6))
-        #expect(pinches.dragCancelled(at: at(0.7)).actions == [.cancelSpawn, .settle])
+        #expect(pinches.dragCancelled(at: at(0.7)).actions == [.cancelSpawn])
     }
 }

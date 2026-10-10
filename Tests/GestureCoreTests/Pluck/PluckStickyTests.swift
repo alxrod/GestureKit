@@ -150,7 +150,7 @@ import Testing
         #expect(moved(&pinches, 45.9, 0, 0, at: 0.6).actions == [])
         #expect(pinches.follow.x > 9)
         let free = moved(&pinches, 46, 0, 0, at: 0.65)
-        #expect(free.actions == [.breakFree])
+        #expect(free.actions == [.breakFree, .settle])
         #expect(free.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 34, threshold: 34, verdict: .pulls, origin: .lift)))
         #expect(pinches.stretch == nil)
         #expect(pinches.follow == .zero)
@@ -169,7 +169,7 @@ import Testing
             _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
             _ = pinches.armPull(at: at(0.45))
             let told = pinches.dragMoved(SIMD3(16, 0, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.6))
-            #expect(told.actions == [.breakFree], "moved \(move)")
+            #expect(told.actions == [.breakFree, .settle], "moved \(move)")
         }
     }
 
@@ -182,7 +182,7 @@ import Testing
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         #expect(moved(&pinches, 0, 0, 40, at: 0.35).why == .notArmedYet)
         #expect(pinches.follow.z > 0)
-        #expect(moved(&pinches, 0, 0, 44, at: 0.46).actions == [.pullArmed, .breakFree])
+        #expect(moved(&pinches, 0, 0, 44, at: 0.46).actions == [.pullArmed, .breakFree, .settle])
     }
 
     // MARK: Let go short of it
@@ -216,7 +216,7 @@ import Testing
         #expect(moved(&pinches, 0, 5, 0, at: 0.75).actions == [])
         #expect(pinches.follow == .zero)
         #expect(pinches.stretch?.reach == 5)
-        #expect(moved(&pinches, 0, 8.2, 0, at: 0.8).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 8.2, 0, at: 0.8).actions == [.breakFree, .settle])
     }
 
     /// A share of 0, or a cap of 0, follows nothing, whatever the distance.
@@ -235,7 +235,7 @@ import Testing
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.25))
         #expect(moved(&pinches, 0, 0, 33, at: 0.26).actions == [.pullArmed])
-        #expect(moved(&pinches, 0, 0, 34, at: 0.27).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 0, 34, at: 0.27).actions == [.breakFree, .settle])
     }
 }
 

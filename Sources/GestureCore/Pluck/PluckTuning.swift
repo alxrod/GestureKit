@@ -258,6 +258,28 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// shipped, the press's end is the pinch let go.
     public var pressEndSettlesLiftedItem: Bool
 
+    /// How long a lifted item kept up past its press waits, in seconds, with
+    /// nothing heard from its pinch, before the pinch is taken as let go and
+    /// the item settles, letting its container's scroll go: half a second.
+    ///
+    /// A lift outlives its press (`pressEndSettlesLiftedItem`), as stopping
+    /// the scroll may cancel the press, and a cancelled press brings no tap
+    /// as it's let go; with the drag silent, the hand within its start of
+    /// the touch, no word is left to say the pinch is over. Until October 9
+    /// the next pinch on an item said so, settling it at its own touch, too
+    /// late for that pinch to scroll, and a pinch on the grid's empty space
+    /// never did: Alex's "sometimes you can get stuck unable to scroll".
+    ///
+    /// Half a second, as the pluck's alarm waits: a hand meaning to pull
+    /// moves its drag's 15 pt within a few tenths of a second of the lift, as
+    /// the headset's traces show, which takes the pinch out of this wait;
+    /// and a hand that let go and pinches again to scroll seldom does so
+    /// sooner. A hand held still that long, its press gone, loses the lift,
+    /// and the pinch it goes on with pulls nothing; scrolling comes first, as
+    /// Alex asked. Longer keeps a still hand's lift, at the cost of a scroll
+    /// begun that soon after letting go.
+    public var quietRelease: Double
+
     /// How long, in seconds, after a pinch that lifted its item is over its
     /// item's tap is still taken as its release, which is no tap: a second.
     /// The tap comes as a pinch is let go, before or after its gestures
@@ -316,6 +338,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         givesLiftBackToScroll: Bool = true,
         scrollSettlesLiftedItem: Bool = true,
         pressEndSettlesLiftedItem: Bool = false,
+        quietRelease: Double = 0.5,
         releaseTapGrace: Double = 1,
         holdsFromTheDrag: Bool = false,
         pullDragIsSimultaneous: Bool = true,
@@ -343,6 +366,7 @@ public struct PluckTuning: Equatable, Sendable, Codable {
         self.givesLiftBackToScroll = givesLiftBackToScroll
         self.scrollSettlesLiftedItem = scrollSettlesLiftedItem
         self.pressEndSettlesLiftedItem = pressEndSettlesLiftedItem
+        self.quietRelease = quietRelease
         self.releaseTapGrace = releaseTapGrace
         self.holdsFromTheDrag = holdsFromTheDrag
         self.pullDragIsSimultaneous = pullDragIsSimultaneous
@@ -380,6 +404,12 @@ public struct PluckTuning: Equatable, Sendable, Codable {
     /// How long a lifting pinch's release tap is waited for.
     public var releaseTapTime: Duration {
         .seconds(releaseTapGrace)
+    }
+
+    /// How long a lift kept up past its press waits, with nothing heard,
+    /// before it's taken as let go.
+    public var quietReleaseTime: Duration {
+        .seconds(quietRelease)
     }
 
     /// The break-free distance in the item's points, at `pointsPerMeter`, as
@@ -486,6 +516,7 @@ extension PluckTuning: Tunable {
         .toggle(\.givesLiftBackToScroll, key: "givesLiftBackToScroll", title: "A held item gives a move along the scroll back to it"),
         .toggle(\.scrollSettlesLiftedItem, key: "scrollSettlesLiftedItem", title: "A scroll settles a lifted item"),
         .toggle(\.pressEndSettlesLiftedItem, key: "pressEndSettlesLiftedItem", title: "The press's end settles a lifted item"),
+        .number(\.quietRelease, key: "quietRelease", title: "A lift kept past its press, unheard, settles after", unit: "s", range: 0.1...3, step: 0.05),
         .number(\.releaseTapGrace, key: "releaseTapGrace", title: "Release tap grace", unit: "s", range: 0...3, step: 0.1),
         .toggle(\.holdsFromTheDrag, key: "holdsFromTheDrag", title: "Hold counts from the drag, not a button"),
         .toggle(\.pullDragIsSimultaneous, key: "pullDragIsSimultaneous", title: "Pull drag is simultaneous"),

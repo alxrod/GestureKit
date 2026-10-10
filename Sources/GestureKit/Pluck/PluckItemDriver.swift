@@ -60,6 +60,7 @@ final class PluckItemDriver {
     private var proxy: GeometryProxy3D?
     private var holdCount: Task<Void, Never>?
     private var armCount: Task<Void, Never>?
+    private var quietCount: Task<Void, Never>?
     /// The trace of the pinch under way.
     private var trace: InteractionTrace?
     /// Whether the app was told the item lifted, and not yet that it
@@ -171,6 +172,7 @@ final class PluckItemDriver {
     func itemWent() {
         holdCount?.cancel()
         armCount?.cancel()
+        quietCount?.cancel()
         setting?.model?.heard("item went", from: self)
         apply(pinches.itemWent(at: .now), word: "item went")
     }
@@ -244,10 +246,12 @@ final class PluckItemDriver {
         containerOffsetChanged(to: offset)
     }
 
-    /// A pinch began on another item: this one, kept up past its press, is
-    /// over.
+    /// A pinch began on another item: this one, kept up past its press, or
+    /// gone quiet, its ends unheard, is over; any other goes on, untold.
     func pinchBeganElsewhere() {
-        apply(pinches.pinchBeganElsewhere(at: .now), word: "pinch elsewhere")
+        let told = pinches.pinchBeganElsewhere(at: .now)
+        guard !told.actions.isEmpty || told.ended != nil else { return }
+        apply(told, word: "pinch elsewhere")
     }
 
     // MARK: The counts
@@ -274,7 +278,23 @@ final class PluckItemDriver {
         case .stopArming:
             armCount?.cancel()
             armCount = nil
+        case .startQuiet(let duration):
+            quietCount?.cancel()
+            quietCount = Task { [weak self] in
+                try? await Task.sleep(for: duration)
+                guard !Task.isCancelled else { return }
+                self?.quietCountIsUp()
+            }
         }
+    }
+
+    /// The quiet of a lift kept up past its press is up: should nothing have
+    /// been heard since, the pinch is taken as let go.
+    private func quietCountIsUp() {
+        quietCount = nil
+        let told = pinches.quietPassed(at: .now)
+        guard !told.actions.isEmpty || told.ended != nil else { return }
+        apply(told, word: "quiet")
     }
 
     /// The hold's count is up: the item lifts unless the container scrolled
@@ -591,6 +611,8 @@ final class PluckItemDriver {
         lastDragNote = nil
         measured = nil
         handoff = nil
+        quietCount?.cancel()
+        quietCount = nil
         setting?.model?.pinchEnded(by: self)
     }
 }

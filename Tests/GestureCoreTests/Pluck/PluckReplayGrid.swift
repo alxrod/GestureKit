@@ -37,6 +37,7 @@ struct PluckReplayGrid {
     /// them.
     private var holdDue: [String: ContinuousClock.Instant] = [:]
     private var armDue: [String: ContinuousClock.Instant] = [:]
+    private var quietDue: [String: ContinuousClock.Instant] = [:]
     /// The container's scroll offset, as its scroll view last said.
     private(set) var scrollOffset = SIMD2<Double>(0, 0)
     /// What each word did, for a failure's message.
@@ -66,6 +67,7 @@ struct PluckReplayGrid {
     private enum Due {
         case hold(String)
         case arming(String)
+        case quiet(String)
         case watch
     }
 
@@ -74,7 +76,9 @@ struct PluckReplayGrid {
     mutating func advance(to seconds: Double) {
         let target = at(seconds)
         while true {
-            var dues: [(ContinuousClock.Instant, Due)] = holdDue.map { ($0.value, .hold($0.key)) } + armDue.map { ($0.value, .arming($0.key)) }
+            var dues: [(ContinuousClock.Instant, Due)] = holdDue.map { ($0.value, .hold($0.key)) }
+                + armDue.map { ($0.value, .arming($0.key)) }
+                + quietDue.map { ($0.value, .quiet($0.key)) }
             if let look = watch.nextCheck { dues.append((look + .milliseconds(50), .watch)) }
             guard let (when, due) = dues.filter({ $0.0 <= target }).min(by: { $0.0 < $1.0 }) else { break }
             now = max(now, when)
@@ -85,6 +89,10 @@ struct PluckReplayGrid {
             case .arming(let item):
                 armDue[item] = nil
                 apply(tell(item) { $0.armPull(at: $1) }, to: item, word: "arming")
+            case .quiet(let item):
+                quietDue[item] = nil
+                let told = tell(item) { $0.quietPassed(at: $1) }
+                if !told.actions.isEmpty || told.ended != nil { apply(told, to: item, word: "quiet") }
             case .watch:
                 lookAtTheHold()
             }
@@ -138,6 +146,7 @@ struct PluckReplayGrid {
     mutating func itemWent(_ item: String) {
         holdDue[item] = nil
         armDue[item] = nil
+        quietDue[item] = nil
         watch.heard("item went", from: item, title: item, at: now)
         let told = tell(item) { $0.itemWent(at: $1) }
         apply(told, to: item, word: "item went")
@@ -217,9 +226,11 @@ struct PluckReplayGrid {
                 for action in told.actions { perform(action, for: item) }
                 pinched.remove(item)
             }
-            for other in pinched.sorted() where other != item && (pinches[other]?.isKeptUpPastItsPress ?? false) {
+            for other in pinched.sorted() where other != item {
                 let elsewhere = tell(other) { $0.pinchBeganElsewhere(at: $1) }
-                apply(elsewhere, to: other, word: "pinch elsewhere")
+                if !elsewhere.actions.isEmpty || elsewhere.ended != nil {
+                    apply(elsewhere, to: other, word: "pinch elsewhere")
+                }
             }
             pinched.insert(item)
             run(told.countdowns, for: item)
@@ -232,7 +243,10 @@ struct PluckReplayGrid {
         }
         run(told.countdowns, for: item)
         for action in told.actions { perform(action, for: item) }
-        if told.ended != nil { pinched.remove(item) }
+        if told.ended != nil {
+            pinched.remove(item)
+            quietDue[item] = nil
+        }
         reportPinch(of: item)
     }
 
@@ -260,6 +274,7 @@ struct PluckReplayGrid {
             case .stopHold: holdDue[item] = nil
             case .startArming(let duration): armDue[item] = now + duration
             case .stopArming: armDue[item] = nil
+            case .startQuiet(let duration): quietDue[item] = now + duration
             }
         }
     }

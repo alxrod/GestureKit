@@ -36,6 +36,16 @@ import Testing
 ///   "had", moving its spawn, and a pinch elsewhere left it alone.
 ///
 /// The alarm (`PluckHoldWatch`) was raised in exactly those replays.
+///
+/// The rules now take each word for what it says: a lift kept up past its
+/// press is let go once nothing has been heard for the quiet
+/// (`PluckTuning.quietRelease`); the tap is the pinch let go, whatever its
+/// gestures still say; a press on the item, or a pinch elsewhere, ends a
+/// pinch whose gestures went quiet, their ends unheard; and breaking free
+/// settles the item, so a carry never holds the scroll. So the scroll goes
+/// once the words say the pinch is over, in every order; where no word comes
+/// at all from a gesture that had the pinch, the next pinch on an item ends
+/// it, and the container's safety net lets its hold go.
 @Suite struct PluckEndReplayTests {
     /// How a pinch went before the words that end it.
     enum Course: String, CaseIterable, CustomTestStringConvertible {
@@ -277,9 +287,7 @@ import Testing
         let orders = Self.orders(of: Self.endings(for: course)).filter { Self.say(course, isLetGo: $0) }
         let outcomes = orders.map { Self.replay(course, $0, next: next) }
         let failed = outcomes.filter(\.failed)
-        withKnownIssue("Before the fix: a lift kept up past its press, or a tap while a gesture still had it, holds the scroll", isIntermittent: true) {
-            #expect(failed.isEmpty, "\(course.rawValue), next on \(next.rawValue): \(failed.count) of \(outcomes.count) orders fail:\n\(Self.summary(outcomes))")
-        }
+        #expect(failed.isEmpty, "\(course.rawValue), next on \(next.rawValue): \(failed.count) of \(outcomes.count) orders fail:\n\(Self.summary(outcomes))")
     }
 
     /// Whatever words go unheard, nothing holds the scroll once the pinch is
@@ -288,7 +296,7 @@ import Testing
     func nothingHoldsTheScrollOnceThePinchIsOverWhateverWordsGoUnheard(_ course: Course, _ next: Next) {
         let outcomes = Self.orders(of: Self.endings(for: course)).map { Self.replay(course, $0, next: next) }
         let failed = outcomes.filter(\.failed)
-        withKnownIssue("Before the fix: a hold outlives the pinch whose words went unheard", isIntermittent: true) {
+        withKnownIssue("Until the safety net: a hold outlives a pinch whose gestures' ends all went unheard", isIntermittent: true) {
             #expect(failed.isEmpty, "\(course.rawValue), next on \(next.rawValue): \(failed.count) of \(outcomes.count) orders fail:\n\(Self.summary(outcomes))")
         }
     }

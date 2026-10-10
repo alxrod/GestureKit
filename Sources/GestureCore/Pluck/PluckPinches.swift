@@ -10,12 +10,14 @@
 ///   should that come first, and the hold counts from then
 ///   (`Countdown.startHold`), unless that first word, past the hold's
 ///   stillness, makes it a scroll. A
-///   press while the drag has the pinch under way is the press coming back
-///   to the item, as the hand moved off it and back, or joining the pinch
-///   the drag began, and no new pinch. A press while a pinch is under way
-///   that the drag doesn't have ends that one, its end unseen, its item let
-///   down, so a press whose end went unheard never keeps an item lifted,
-///   nor its container's scroll off.
+///   press while the drag has the pinch under way, and has spoken within
+///   the tuning's quiet, is the press coming back to the item, as the hand
+///   moved off it and back, or joining the pinch the drag began, and no new
+///   pinch. A press while a pinch is under way that the drag doesn't have,
+///   or whose drag has gone quiet, its end unheard, ends that one, its end
+///   unseen, what it carries let go and its item let down, so no word gone
+///   unheard keeps an item lifted, nor its container's scroll off, past the
+///   next press.
 /// - **Its hold** comes as the caller's count says, and lifts the item if
 ///   the press or the drag still has the pinch and the container didn't
 ///   scroll during it, as its scroll view and its scroll offset say
@@ -36,11 +38,19 @@
 ///   a pinch let go before its hold is the item's tap. One whose tap never
 ///   comes, as one cancelled, or let go past the item's reach, is told as
 ///   the next pinch begins, or its item goes, its end unseen.
+/// - **Its quiet.** A lift kept up past its press, its drag silent, has no
+///   word left that says it's let go, since a press its lift cancelled
+///   brings no tap: the caller counts the tuning's quiet
+///   (`Countdown.startQuiet`), and once nothing has been heard for it, the
+///   pinch is over, its item let down (`quietPassed(at:)`), so its
+///   container's scroll is on again for the next pinch, wherever it lands.
 /// - **Its release tap.** The item's tap fires as a pinch is let go, before
 ///   or after its gestures end. A pinch that lifted its item swallows it
 ///   (`PluckPress.swallowsReleaseTap`), while it's under way, or within
 ///   `releaseTapGrace` of its end, once; the next pinch's touch ends that
-///   wait.
+///   wait. Under way, the tap is the pinch let go, whatever its press or its
+///   drag still say: what it carries is let go, its item settles, and it's
+///   over.
 /// - **Its item going** mid-pinch takes its pull away and lets it down.
 public struct PluckPinches: Sendable {
     /// What a pinch was, as it ended, for a trace or a log: whether a scroll
@@ -73,6 +83,9 @@ public struct PluckPinches: Sendable {
             case unseen
             /// Its item went, as it left its container.
             case itemWent
+            /// Nothing was heard: kept up past its press, with neither
+            /// gesture having it, nothing came for the tuning's quiet.
+            case quiet
         }
 
         public var outcome: Outcome
@@ -138,6 +151,10 @@ public struct PluckPinches: Sendable {
         case startArming(Duration)
         /// Stop counting to the arming: the pinch ended, or a new one began.
         case stopArming
+        /// Count the quiet of a lift kept up past its press, this long from
+        /// now, then tell `quietPassed`, which does something only if the
+        /// pinch is still kept up and nothing has been heard since.
+        case startQuiet(Duration)
     }
 
     /// What one word from a gesture did: what the item does, why, the
@@ -237,6 +254,11 @@ public struct PluckPinches: Sendable {
     public private(set) var scrollOffsetMovedBeforeHold: Double?
     /// Whether the item's tap came while the pinch was under way.
     private var tapCame = false
+    /// When a gesture last spoke on the pinch under way: its press, its
+    /// drag, or its tap.
+    private var lastWordAt: ContinuousClock.Instant?
+    /// When its drag last spoke.
+    private var lastDragAt: ContinuousClock.Instant?
     /// Until when the item's tap is still the release of the pinch that
     /// last ended; nil when none is expected.
     private var releaseTapExpectedUntil: ContinuousClock.Instant?
@@ -250,12 +272,21 @@ public struct PluckPinches: Sendable {
     /// while the drag has the pinch under way, the press joined it, and the
     /// pinch goes on.
     public mutating func pressBegan(at now: ContinuousClock.Instant) -> Told {
-        if press != nil, isDragging {
-            isHolding = true
-            return Told(why: .pressJoined)
+        var why = PluckReason.began
+        if let press, isDragging {
+            let quiet = lastDragAt.map { now - $0 } ?? .zero
+            if quiet < press.tuning.quietReleaseTime {
+                isHolding = true
+                lastWordAt = now
+                return Told(why: .pressJoined)
+            }
+            why = .dragWentQuiet(seconds: Double(quiet.components.seconds) + Double(quiet.components.attoseconds) / 1e18)
         }
-        var told = Told(why: .began, beganAPinch: true)
+        var told = Told(why: why, beganAPinch: true)
         if let press {
+            if press.isPulling {
+                told.actions.append(.releaseSpawned)
+            }
             if press.isLifted {
                 told.actions.append(.settle)
             }
@@ -278,6 +309,9 @@ public struct PluckPinches: Sendable {
         var countdowns: [Countdown] = []
         if actions.contains(.lift), let tuning = press?.tuning {
             liftedAt = now
+            // The lift counts as heard, so a pinch held still is quiet from
+            // here.
+            lastWordAt = now
             countdowns = [.startArming(tuning.pullArmTime)]
         }
         return Told(actions: actions, why: why, countdowns: countdowns)
@@ -294,9 +328,10 @@ public struct PluckPinches: Sendable {
     /// The hold's press ended: let go, or cancelled, as when the container's
     /// scroll takes the pinch, the hold come or not.
     public mutating func pressEnded(at now: ContinuousClock.Instant) -> Told {
-        guard press != nil else { return Told(why: .noPinch) }
+        guard let press else { return Told(why: .noPinch) }
         isHolding = false
         pressEndedAt = now
+        lastWordAt = now
         var (actions, why) = tell { $0.pressEnded() }
         if why == .liftOutlivesItsPress, tapCame {
             // Its tap came already, so the pinch was let go.
@@ -304,7 +339,12 @@ public struct PluckPinches: Sendable {
         }
         noteSettling(actions, at: now)
         let ended = endIfOver(.letGo, at: now)
-        return Told(actions: actions, why: why, countdowns: ended == nil ? [] : Self.stopBoth, ended: ended)
+        var countdowns = ended == nil ? [] : Self.stopBoth
+        if why == .liftOutlivesItsPress {
+            // Kept up past its press: nothing may come to say it's let go.
+            countdowns.append(.startQuiet(press.tuning.quietReleaseTime))
+        }
+        return Told(actions: actions, why: why, countdowns: countdowns, ended: ended)
     }
 
     /// The pull's drag spoke: `translation` from where the pinch touched, in
@@ -313,6 +353,8 @@ public struct PluckPinches: Sendable {
         let beganAPinch = press == nil
         begin(at: now)
         isDragging = true
+        lastWordAt = now
+        lastDragAt = now
         if translation.x.isFinite, translation.y.isFinite, translation.z.isFinite {
             dragReportedAt = dragReportedAt ?? now
             moved = translation
@@ -328,6 +370,7 @@ public struct PluckPinches: Sendable {
         if actions.contains(.breakFree) {
             pulledAt = now
         }
+        noteSettling(actions, at: now)
         var countdowns: [Countdown] = []
         if beganAPinch {
             countdowns.append(.stopArming)
@@ -344,6 +387,7 @@ public struct PluckPinches: Sendable {
     public mutating func dragEnded(at now: ContinuousClock.Instant) -> Told {
         guard press != nil else { return Told(why: .noPinch) }
         isDragging = false
+        lastWordAt = now
         let (actions, why) = tell { $0.dragEnded() }
         noteSettling(actions, at: now)
         let ended = endIfOver(.letGo, at: now)
@@ -354,6 +398,7 @@ public struct PluckPinches: Sendable {
     public mutating func dragCancelled(at now: ContinuousClock.Instant) -> Told {
         guard press != nil else { return Told(why: .noPinch) }
         isDragging = false
+        lastWordAt = now
         let (actions, why) = tell { $0.dragCancelled() }
         noteSettling(actions, at: now)
         let ended = endIfOver(.cancelled, at: now)
@@ -361,15 +406,21 @@ public struct PluckPinches: Sendable {
     }
 
     /// The item's tap fired: the release of a pinch that lifted its item,
-    /// while it's under way or within `releaseTapGrace` of its end, once,
-    /// which does nothing but let down an item both gestures have let go;
-    /// otherwise a tap, which ends a pinch waiting for it.
+    /// while it's under way or within `releaseTapGrace` of its end, once.
+    /// Under way, it's the pinch let go, whatever its press or its drag still
+    /// say, since the tap comes only as a pinch is let go: what it carries is
+    /// let go, its item settles, and it's over, so neither gesture's end gone
+    /// unheard keeps its item lifted, nor its container's scroll off.
+    /// Otherwise it's a tap, which ends a pinch waiting for it.
     public mutating func tapped(at now: ContinuousClock.Instant) -> Tap {
         let sinceTouch = (began ?? lastBegan).map { now - $0 }
         if let press {
             tapCame = true
+            lastWordAt = now
             var actions: [PluckPress.Action] = []
-            if press.swallowsReleaseTap, press.isLifted, !isHolding, !isDragging {
+            if press.swallowsReleaseTap {
+                isHolding = false
+                isDragging = false
                 (actions, _) = tell { $0.releaseTapped() }
                 noteSettling(actions, at: now)
             }
@@ -437,17 +488,42 @@ public struct PluckPinches: Sendable {
     }
 
     /// A pinch began on another item of the container, at `now`: should
-    /// neither gesture have this one, its item kept up past its press, it's
-    /// over, its end unseen, and its item settles, so a press cancelled as
-    /// the lift stopped the scroll never keeps the item up, and the scroll
-    /// off, past the next pinch anywhere.
+    /// neither gesture have this one, its item kept up past its press, or
+    /// should nothing have been heard from its gestures for the quiet, its
+    /// ends gone unheard, it's over, its end unseen, and its item settles, so
+    /// a press cancelled as the lift stopped the scroll, or a gesture whose
+    /// end went unheard, never keeps the item up, and the scroll off, past
+    /// the next pinch anywhere.
     public mutating func pinchBeganElsewhere(at now: ContinuousClock.Instant) -> Told {
         guard let press else { return Told(why: .noPinch) }
-        guard press.isLifted, !isHolding, !isDragging else { return Told(why: .toldAlready) }
+        guard press.isLifted, !(isHolding || isDragging) || hasGoneQuiet(at: now) else { return Told(why: .toldAlready) }
         let (actions, why) = tell { $0.pinchBeganElsewhere() }
         noteSettling(actions, at: now)
         let ended = end(.unseen, at: now)
         return Told(actions: actions, why: why, countdowns: Self.stopBoth, ended: ended)
+    }
+
+    /// The quiet a lift kept up past its press asked for is up, at `now`:
+    /// should the pinch still be kept up, with nothing heard from it for the
+    /// quiet, it's taken as let go: its item settles, and it's over. Anything
+    /// else, as a drag that spoke since, changes nothing.
+    public mutating func quietPassed(at now: ContinuousClock.Instant) -> Told {
+        guard let press else { return Told(why: .noPinch) }
+        let quiet = lastWordAt.map { now - $0 } ?? .zero
+        guard isKeptUpPastItsPress, quiet >= press.tuning.quietReleaseTime - Self.timerRounding else {
+            return Told(why: .toldAlready)
+        }
+        let (actions, why) = tell { $0.quietPassed(after: quiet) }
+        noteSettling(actions, at: now)
+        let ended = end(.quiet, at: now)
+        return Told(actions: actions, why: why, countdowns: Self.stopBoth, ended: ended)
+    }
+
+    /// Whether nothing has been heard from the pinch under way's gestures for
+    /// its tuning's quiet, at `now`.
+    private func hasGoneQuiet(at now: ContinuousClock.Instant) -> Bool {
+        guard let press, let lastWordAt else { return false }
+        return now - lastWordAt >= press.tuning.quietReleaseTime
     }
 
     /// How far the pinch under way has stretched toward breaking its item
@@ -512,6 +588,8 @@ public struct PluckPinches: Sendable {
         scrollOffsetAtTouch = nil
         scrollOffsetMovedBeforeHold = nil
         tapCame = false
+        lastWordAt = now
+        lastDragAt = nil
         // A new pinch's touch comes after the last one's release.
         releaseTapExpectedUntil = nil
     }
@@ -549,10 +627,11 @@ public struct PluckPinches: Sendable {
         }
     }
 
-    /// Whether neither gesture has the pinch, and its item is down.
+    /// Whether neither gesture has the pinch, its item is down, and it
+    /// carries nothing it spawned.
     private var isOver: Bool {
         guard let press else { return false }
-        return !isDragging && !isHolding && !press.isLifted
+        return !isDragging && !isHolding && !press.isLifted && !press.isPulling
     }
 
     /// Whether the pinch waits only for its tap: it's over, but nothing

@@ -136,10 +136,11 @@ public final class PluckContainerModel {
         watched { $0.pinch(item, is: pinch, at: .now) }
     }
 
-    /// `driver`'s item began a pinch: one kept up past its press elsewhere
-    /// is over, its end unseen, and settles.
+    /// `driver`'s item began a pinch: each other item's pinch hears of it,
+    /// and one kept up past its press, or gone quiet, its ends unheard, is
+    /// over, its end unseen, and settles.
     func pinchBegan(by driver: PluckItemDriver) {
-        for other in pinchedItems.values where other !== driver && other.isKeptUpPastItsPress {
+        for other in Array(pinchedItems.values) where other !== driver {
             other.pinchBeganElsewhere()
         }
         pinchedItems[ObjectIdentifier(driver)] = driver

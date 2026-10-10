@@ -129,9 +129,9 @@ import Testing
         #expect(short.actions == [])
         #expect(short.why == .notAPull(PluckPullJudgement(depth: 0, drift: 5, threshold: 8.16, verdict: .tooShort, origin: .lift)))
         let pull = moved(&pinches, 8.2, 16, 0, at: 0.8)
-        #expect(pull.actions == [.breakFree])
+        #expect(pull.actions == [.breakFree, .settle])
         #expect(moved(&pinches, 60, 40, 0, at: 1).actions == [.carrySpawned])
-        #expect(pinches.dragEnded(at: at(1.2)).actions == [.releaseSpawned, .settle])
+        #expect(pinches.dragEnded(at: at(1.2)).actions == [.releaseSpawned])
     }
 
     /// Any way: up, down, toward the viewer, or away, 8.2 pt from where it
@@ -144,7 +144,7 @@ import Testing
             _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
             _ = pinches.armPull(at: at(0.7))
             let told = pinches.dragMoved(SIMD3(0, 20, 0) + move, pointsPerMeter: pointsPerMeter, at: at(0.8))
-            #expect(told.actions == [.breakFree], "moved \(move)")
+            #expect(told.actions == [.breakFree, .settle], "moved \(move)")
         }
     }
 
@@ -159,14 +159,14 @@ import Testing
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
         #expect(moved(&pinches, 0, 31, 0, at: 0.72).actions == [])
-        #expect(moved(&pinches, 0, 38.2, 0, at: 0.8).actions == [.breakFree])
+        #expect(moved(&pinches, 0, 38.2, 0, at: 0.8).actions == [.breakFree, .settle])
 
         var fromTheTouch = PluckPinches(tuning: loose(measuresPullFromLift: false))
         _ = fromTheTouch.pressBegan(at: at(0))
         _ = moved(&fromTheTouch, 0, 30, 0, at: 0.45)
         _ = fromTheTouch.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = fromTheTouch.armPull(at: at(0.7))
-        #expect(moved(&fromTheTouch, 0, 31, 0, at: 0.72).actions == [.breakFree])
+        #expect(moved(&fromTheTouch, 0, 31, 0, at: 0.72).actions == [.breakFree, .settle])
     }
 
     /// The drag reports depth in steps of about 4.2 pt: one step from where
@@ -178,7 +178,7 @@ import Testing
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
         _ = pinches.armPull(at: at(0.7))
         #expect(moved(&pinches, 7.5, -2.1, 17.5, at: 0.75).actions == [])
-        #expect(moved(&pinches, 7.5, -2.1, 21.7, at: 0.8).actions == [.breakFree])
+        #expect(moved(&pinches, 7.5, -2.1, 21.7, at: 0.8).actions == [.breakFree, .settle])
     }
 
     /// With the drag silent as the item lifts, the pinch stood within its
@@ -191,7 +191,7 @@ import Testing
         #expect(pinches.armPull(at: at(0.7)).actions == [.pullArmed])
         #expect(pinches.press?.liftPoint == nil)
         let first = moved(&pinches, 0, 15, 0, at: 0.9)
-        #expect(first.actions == [.breakFree])
+        #expect(first.actions == [.breakFree, .settle])
         #expect(first.why == .brokeFree(PluckPullJudgement(depth: 0, drift: 15, threshold: 8.16, verdict: .pulls, origin: .touch)))
     }
 
@@ -201,11 +201,11 @@ import Testing
         var pinches = PluckPinches(tuning: .loose)
         _ = pinches.pressBegan(at: at(0))
         _ = pinches.holdFired(asTheContainerScrolled: false, at: at(0.5))
-        #expect(pinches.pressEnded(at: at(0.51)) == PluckPinches.Told(why: .liftOutlivesItsPress))
+        #expect(pinches.pressEnded(at: at(0.51)) == PluckPinches.Told(why: .liftOutlivesItsPress, countdowns: [.startQuiet(.seconds(0.5))]))
         _ = pinches.armPull(at: at(0.7))
-        #expect(moved(&pinches, -12, 9, 2, at: 0.8).actions == [.breakFree])
+        #expect(moved(&pinches, -12, 9, 2, at: 0.8).actions == [.breakFree, .settle])
         let told = pinches.dragEnded(at: at(1.1))
-        #expect(told.actions == [.releaseSpawned, .settle])
+        #expect(told.actions == [.releaseSpawned])
         #expect(try #require(told.ended).outcome == .pull)
         #expect(pinches.tapped(at: at(1.12)).isRelease)
     }
@@ -221,7 +221,7 @@ import Testing
         _ = defaults.holdFired(asTheContainerScrolled: false, at: at(0.56))
         _ = defaults.armPull(at: at(0.76))
         let first = moved(&defaults, -14.3, -2.1, 4.2, at: 0.8)
-        #expect(first.actions == [.breakFree])
+        #expect(first.actions == [.breakFree, .settle])
 
         var asFirstShipped = PluckPinches(tuning: .towardTheViewerFromTheTouch)
         _ = asFirstShipped.pressBegan(at: at(0))
@@ -269,7 +269,7 @@ import Testing
         #expect(moved(&pinches, 7.5, -2.1, 13.3, at: 0.73).why == .notArmedYet)
         _ = pinches.armPull(at: at(0.79))
         let pull = moved(&pinches, 8.6, -0.9, 18.6, at: 0.81)
-        #expect(pull.actions == [.breakFree])
+        #expect(pull.actions == [.breakFree, .settle])
         guard case .brokeFree(let pulled) = pull.why else {
             Issue.record("expected a pull, got \(pull.why)")
             return
@@ -309,7 +309,7 @@ import Testing
             _ = pinches.armPull(at: at(0.7))
             return pinches.dragMoved(SIMD3(0, 28.2, 0), pointsPerMeter: pointsPerMeter, at: at(0.72))
         }
-        #expect(pinch(.loose).actions == [.breakFree])
+        #expect(pinch(.loose).actions == [.breakFree, .settle])
         #expect(pinch(loose(measuresPullFromLift: false, measuresPullFromArming: true)).actions == [])
     }
 }

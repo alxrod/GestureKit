@@ -224,12 +224,12 @@ import Testing
         _ = toward.armPull(at: at(0.45))
         #expect(moved(&toward, 0, 12, 10, at: 0.5).actions == [])
         #expect(toward.press?.isLifted == true)
-        #expect(moved(&toward, 0, 16, 31, at: 0.6).actions == [.breakFree])
+        #expect(moved(&toward, 0, 16, 31, at: 0.6).actions == [.breakFree, .settle])
 
         var across = pressed()
         _ = across.holdFired(asTheContainerScrolled: false, at: at(0.25))
         _ = across.armPull(at: at(0.45))
-        #expect(moved(&across, 34, 5, 0, at: 0.6).actions == [.breakFree])
+        #expect(moved(&across, 34, 5, 0, at: 0.6).actions == [.breakFree, .settle])
     }
 
     // MARK: The trace's words
