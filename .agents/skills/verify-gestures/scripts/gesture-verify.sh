@@ -19,7 +19,9 @@
 #       Read-only: the run's simulator booted, the app running in it, the
 #       port listened on by that app and no other, the installed build the
 #       one built, the checkout unchanged since, and the automation answering
-#       ready on that port. Exits 1 at anything wrong.
+#       ready on that port. Exits 1 at anything wrong. Warns, without
+#       failing, when this skill's stamp names another GestureKit commit
+#       than the checkout gesturekit-drive was built from.
 #   gesture-verify.sh drive RUN_DIR COMMAND [ARGS…]
 #       Any gesturekit-drive command against the run's app.
 #   gesture-verify.sh capture RUN_DIR LABEL [--expect JQ_FILTER] COMMAND [ARGS…]
@@ -46,7 +48,44 @@ set -euo pipefail
 JQ="$(command -v jq || echo /usr/bin/jq)"
 gesture_verify_lsregister=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
 
+# This skill's folder, wherever it's installed: its SKILL.md carries the
+# stamp gesturekit-drive install-skill writes.
+gesture_verify_skill_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 say() { echo "gesture-verify: $*" >&2; }
+
+# The GestureKit commit a SKILL.md ($1) was stamped with by gesturekit-drive
+# install-skill, from its frontmatter's metadata, gesturekit-revision; nothing
+# for GestureKit's own copy, which has none. GestureKit's SkillStamp writes it
+# and the Claude Code plugin's pinned-skill.sh reads it too: keep them in step.
+skill_stamp() {
+  awk '
+    NR == 1 { if ($0 !~ /^---[ \t\r]*$/) exit; inside = 1; next }
+    inside && /^---[ \t\r]*$/ { exit }
+    inside && /^metadata:[ \t\r]*$/ { meta = 1; next }
+    inside && meta && /^[^ \t]/ { meta = 0 }
+    inside && meta && /^[ \t]+gesturekit-revision:/ {
+      value = $0
+      sub(/^[ \t]+gesturekit-revision:[ \t]*/, "", value)
+      if (value ~ /^["\047]/) { quote = substr(value, 1, 1); value = substr(value, 2); sub(quote ".*$", "", value) }
+      else { sub(/[ \t]+#.*$/, "", value); sub(/[ \t\r]+$/, "", value) }
+      print value
+      exit
+    }
+  ' "$1" 2>/dev/null || true
+}
+
+# The GestureKit commit a checkout ($1) is at, as gesturekit-drive install-skill
+# would stamp it: only for a git repository of its own whose skill is as
+# committed; nothing otherwise.
+checkout_revision() {
+  local root="$1" top head
+  top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  [ "$(cd "$top" && pwd -P)" = "$(cd "$root" && pwd -P)" ] || return 0
+  head="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || return 0
+  [ -z "$(git -C "$root" status --porcelain -- .agents/skills/verify-gestures 2>/dev/null)" ] || return 0
+  echo "$head"
+}
 die() { say "$*"; exit 1; }
 
 # A free port for the automation, from a random start in 48800-48899, so two
@@ -187,6 +226,8 @@ cmd_up() {
   gesturekit="${gesturekit:-$work/DerivedData/SourcePackages/checkouts/GestureKit}"
   [ -f "$gesturekit/Package.swift" ] \
     || die "GestureKit's checkout isn't at $gesturekit; for a local package, give --gesturekit <its folder>"
+  gesturekit="$(cd "$gesturekit" && pwd)"
+  write_env "$dir/run.env" "GESTURE_KIT_CHECKOUT=$gesturekit"
   say "building gesturekit-drive from $gesturekit"
   swift build --package-path "$gesturekit" --scratch-path "$work/driver" --product gesturekit-drive >"$work/driver-build.log" 2>&1 \
     || { tail -n 20 "$work/driver-build.log" >&2; die "gesturekit-drive didn't build"; }
@@ -245,6 +286,21 @@ cmd_doctor() {
     pass "the checkout is as it was built, $now"
   else
     flag "the checkout changed since the build ($GESTURE_BUILT_FROM, now $now): launch a new run to drive the change"
+  fi
+
+  # A warning, never a failure: this skill, installed by gesturekit-drive
+  # install-skill, came from another GestureKit commit than the driver.
+  local stamp kit
+  stamp="$(skill_stamp "$gesture_verify_skill_dir/SKILL.md")"
+  if [ -n "$stamp" ] && [ -n "${GESTURE_KIT_CHECKOUT:-}" ]; then
+    kit="$(checkout_revision "$GESTURE_KIT_CHECKOUT")"
+    if [ -z "$kit" ]; then
+      echo "warn  this skill came from GestureKit $stamp, and git can't say which commit gesturekit-drive's checkout, $GESTURE_KIT_CHECKOUT, is at"
+    elif [ "$(tr '[:upper:]' '[:lower:]' <<<"$stamp")" != "$kit" ]; then
+      echo "warn  this skill came from GestureKit $stamp, but gesturekit-drive from GestureKit $kit; bring it in step with: $GESTURE_DRIVE install-skill --update --into $(dirname "$gesture_verify_skill_dir")"
+    else
+      pass "this skill came from GestureKit $kit, as gesturekit-drive did"
+    fi
   fi
 
   local tries=0
