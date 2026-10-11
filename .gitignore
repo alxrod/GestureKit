@@ -8,4 +8,9 @@ xcuserdata/
 DerivedData/
 Local.xcconfig
 /.worktrees
-/.claude
+# Claude Code's own folder stays local, but for its skills: a link to
+# .agents/skills, where every harness finds the same ones.
+/.claude/*
+!/.claude/skills
+# What verification runs prove, kept past their cleanup.
+/artifacts

@@ -166,10 +166,16 @@ Here's what each prints:
 - A failure exits 1.
 - `launch --script FILE` runs FILE's commands as the app settles, and prints
   their results.
+- `install-skill [--into DIR] [--replace]` copies the package's own
+  `verify-gestures` skill, `.agents/skills/verify-gestures/` in its
+  checkout, found beside the tool's sources, into the app's repository, so
+  the app's agents inherit how to launch, check, drive, and prove its
+  gestures with the driver, and clean up after.
 
-For GestureLab, `scripts/gesture-drive.sh` keeps a simulator of its own,
-"GestureLab-Auto", and builds the lab and the driver into
-`build/gesture-drive/`, never Xcode's DerivedData. It hands everything else
-to the driver. `scripts/gesture-selftest.sh` drives every gesture in a fresh
+For GestureLab, the `verify-gesturelab` skill proves a change one feature
+at a time, with its evidence kept, and `scripts/gesture-drive.sh` keeps a
+simulator of its own, "GestureLab-Auto", and builds the lab and the driver
+into `build/gesture-drive/`, never Xcode's DerivedData. It hands everything
+else to the driver. `scripts/gesture-selftest.sh` drives every gesture in a fresh
 simulator, checks each outcome with `jq`, runs the smoke on every station and
 a script at launch, and exits non-zero at the first failure.

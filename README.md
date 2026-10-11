@@ -877,8 +877,9 @@ The stations:
 - **Pluck**: a grid in a window of its own, whose items you pull out into
   the room as cards.
 
-`AGENTS.md` has the repository's layout and conventions, and how to add a
-gesture or a station.
+`AGENTS.md` has the repository's layout and conventions, how to add a
+gesture or a station, and how a change is proven, with the skills in
+`.agents/skills/`.
 
 ## Testing
 
@@ -963,6 +964,21 @@ says what happened.
    It exits 1 when a command fails, and the answer's `error` says why.
    `--brief` prints only the outcome and result.
 
+5. **Give your agents the skill.** `install-skill` copies GestureKit's
+   `verify-gestures` skill into your repository's `.agents/skills/`, or the
+   folder `--into` names, refusing to replace one already there unless
+   `--replace`. It tells an agent how to launch your app in a simulator of
+   its own, check that it's driving the right build, drive each gesture with
+   a check written first, keep each answer, trace, screenshot, and state as
+   evidence, clean up only what it made, and grow a map of your app's
+   gestures. Its helper, `scripts/gesture-verify.sh`, does each step.
+
+   ```sh
+   swift run gesturekit-drive install-skill
+   ```
+
+   For Claude Code, link `.claude/skills` to `.agents/skills`.
+
 ### How things are named
 
 | What | Driven by |
@@ -1009,6 +1025,9 @@ An app that shows no GestureKit adapter at launch can call
 `GestureAutomation.start()`.
 
 GestureLab drives itself the same way:
+- The `verify-gesturelab` skill, in `.agents/skills/`, proves a change to
+  a gesture there: a run's own simulator, a doctor, a feature map with a
+  recipe per gesture, and the evidence kept in `artifacts/`.
 - `scripts/gesture-drive.sh up` keeps a simulator of its own, builds the
   lab and the driver, and launches the lab with automation on.
 - `scripts/gesture-drive.sh <command>` runs any of the driver's commands
