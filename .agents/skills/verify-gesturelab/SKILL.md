@@ -188,8 +188,8 @@ failed launch too.
 
 Never:
 
-- touch a simulator the run didn't make: not the booted `VCAD-CI`, nor
-  another agent's `GestureLab-Auto` or `GestureLab-Selftest`;
+- touch a simulator the run didn't make: not one already booted for other
+  work, nor another agent's `GestureLab-Auto` or `GestureLab-Selftest`;
 - run `scripts/gesture-drive.sh down` with `GESTURE_SIM` naming a
   simulator you didn't make, since it deletes whatever simulator has that
   name;
