@@ -10,6 +10,9 @@ import PackageDescription
 // gesturekit-drive: a Mac tool that drives an app's gestures in a visionOS
 // simulator through GestureKit's automation, in debug builds, which an app's
 // own repository runs with `swift run gesturekit-drive`.
+// SkillStamp: the stamp gesturekit-drive writes in the skill it installs,
+// naming the GestureKit commit it came from, as plain values, tested on the
+// Mac. No product: only the driver uses it.
 let package = Package(
     name: "GestureKit",
     platforms: [
@@ -24,8 +27,10 @@ let package = Package(
     targets: [
         .target(name: "GestureCore"),
         .target(name: "GestureKit", dependencies: ["GestureCore"]),
-        .executableTarget(name: "GestureKitDrive"),
+        .target(name: "SkillStamp"),
+        .executableTarget(name: "GestureKitDrive", dependencies: ["SkillStamp"]),
         .testTarget(name: "GestureCoreTests", dependencies: ["GestureCore"]),
+        .testTarget(name: "SkillStampTests", dependencies: ["SkillStamp"]),
     ],
     swiftLanguageModes: [.v6]
 )
