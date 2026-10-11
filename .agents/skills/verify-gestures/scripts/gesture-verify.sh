@@ -145,7 +145,8 @@ cmd_up() {
   local dir
   dir="$(cd "$evidence_root" && pwd)/$run"
   [ ! -e "$dir" ] || die "$dir exists: choose another run name"
-  local work="${GESTURE_VERIFY_WORK_ROOT:-${TMPDIR:-/tmp}/gesture-verify}/$run"
+  local tmp="${TMPDIR:-/tmp}"
+  local work="${GESTURE_VERIFY_WORK_ROOT:-${tmp%/}/gesture-verify}/$run"
   local repo
   repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   port="${port:-$(free_port)}"
