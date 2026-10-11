@@ -53,7 +53,52 @@ link to it for Claude Code.
   `scripts/gesture-verify.sh` (`up`, `doctor`, `drive`, `capture`, `check`,
   `down`),
   which the lab's skill shares. `gesturekit-drive install-skill` copies it
-  into an adopter's repository.
+  into an adopter's repository, stamped with the commit it came from.
+- The Claude Code plugin, for adopters, since Claude Code doesn't read
+  `.agents/skills`: a marketplace at the root
+  (`.claude-plugin/marketplace.json`) and the plugin `plugins/gesturekit/`,
+  whose stub `verify-gestures` runs `scripts/pinned-skill.sh` to load the
+  `verify-gestures` of the GestureKit commit the app's `Package.resolved`
+  pins. Adopters add it with `/plugin marketplace add alxrod/GestureKit`
+  and `/plugin install gesturekit@gesturekit`.
+
+### Keeping the plugin and the skill in step
+
+The plugin carries no copy of the skill: its locator reads the skill from
+the app's pinned checkout, so the skill's own text needs nothing from the
+plugin. What they share, and what a change to one must carry to the
+others:
+
+- **The stamp.** `install-skill` writes `metadata: gesturekit-revision:
+  "<commit>"` in the copy's frontmatter (`Sources/SkillStamp`). Three
+  readers parse it: `SkillStamp.revision(in:)`, `skill_stamp` in
+  `gesture-verify.sh`, and `skill_stamp` in `pinned-skill.sh`. Change its
+  key or shape in all three, and in `SkillStampTests`.
+- **The skill's place.** The locator, the driver
+  (`InstalledSkill.relativeFolder`), and the stamp's readers all look for
+  `.agents/skills/verify-gestures/SKILL.md` in a checkout. Moving or
+  renaming the skill means a locator that finds it at both places, old
+  pins and new.
+- **The description.** The stub's frontmatter `description` is the
+  package skill's, word for word, so Claude Code reaches for it when any
+  other agent reaches for the skill. Change both together.
+- **The pin's places.** The locator reads `Package.resolved` in its
+  formats, SwiftPM's checkouts, Xcode's DerivedData and its `info.plist`,
+  and SwiftPM's repository cache, as they are today. When SwiftPM or Xcode
+  moves one, the locator follows.
+- **Nothing to bump.** The plugin sets no `version`, on purpose: Claude
+  Code then versions it by commit, and every push is an update, while the
+  skill it loads follows each app's pin. `claude plugin validate` warns
+  about the missing version, and nothing else.
+
+`swift test` checks the manifests' shape, the stub's description and its
+one approved command, and that both scripts read the stamp's key
+(`ClaudePluginTests`). Prove a change to the locator by running it against
+a SwiftPM package of your own that pins GestureKit, as resolved, with its
+checkout moved away, and with an installed copy stamped in and out of
+step, and keep what it prints in `artifacts/`; then `claude plugin validate
+.` at the root. Never install the plugin, or add the marketplace, to test
+it on a machine you share.
 
 ## Rules
 
@@ -119,7 +164,9 @@ link to it for Claude Code.
   the Mac. The Mac builds GestureKit empty, its sources being visionOS
   only. `swift test` also checks that each Swift block in `README.md` is a
   file of `Lab/GestureLab/ReadmeSnippets/` and the reverse
-  (`ReadmeSnippetsTests`), and the skills' shape (`AgentSkillsTests`).
+  (`ReadmeSnippetsTests`), the skills' shape (`AgentSkillsTests`), and the
+  stamp `install-skill` writes and the Claude Code plugin's shape
+  (`SkillStampTests`, `ClaudePluginTests`).
 - **The lab**, and with it GestureKit's visionOS side:
   `scripts/build-check.sh`, or `scripts/build-check.sh release`. It builds
   for the generic visionOS Simulator into a throwaway DerivedData with
@@ -172,8 +219,8 @@ through the real adapters, and answers in JSON.
 ## Layout
 
 - `Package.swift`: the libraries `GestureCore` and `GestureKit`, the
-  executable `gesturekit-drive`, and GestureCore's tests, in the Swift 6
-  language mode.
+  executable `gesturekit-drive` and its `SkillStamp` target, and their
+  tests, in the Swift 6 language mode.
 - **GestureCore**, each gesture's rules and math, plain Swift, macOS 14+ and
   visionOS 26:
   - `Sources/GestureCore/<Area>/`: an area's rules, as values, and its
@@ -251,10 +298,21 @@ through the real adapters, and answers in JSON.
 - `Sources/GestureKitDrive/`: `gesturekit-drive`, the Mac tool an app's own
   repository runs with `swift run`: `launch`, `targets`, `smoke`, each
   gesture's command, `trace`, `wait`, `state`, `commands`, `send`,
-  `screenshot`, and `install-skill`.
+  `screenshot`, and `install-skill`; and, before every command but
+  `install-skill`, the warning that the app's installed skill came from
+  another GestureKit commit.
+- `Sources/SkillStamp/`, no product, used by the driver alone, plain values
+  tested on the Mac: the stamp in a copied skill's frontmatter, read and
+  rewritten (`SkillStamp`); the commit git vouches for in a checkout
+  (`CheckoutRevision`); a stamp held against the driver's commit
+  (`SkillStampComparison`); what `install-skill` does with a copy that's
+  there (`SkillInstallPlan`); and where an app's copy is looked for
+  (`InstalledSkill`).
 - `Tests/GestureCoreTests/<Area>/` and `Tests/GestureCoreTests/Lab/`: the
   core's tests, a folder per area; `ReadmeSnippetsTests` and
   `AgentSkillsTests` check the README's code and the skills.
+  `Tests/SkillStampTests/`: the stamp's, and `ClaudePluginTests`, the
+  plugin's.
 - `Lab/`, GestureLab:
   - `project.yml`: the xcodegen spec, the source of truth for the committed
     `GestureLab.xcodeproj`. `Signing.xcconfig`: includes the gitignored
@@ -295,6 +353,10 @@ through the real adapters, and answers in JSON.
   against it; `gesture-selftest.sh`, every gesture driven and checked in a
   fresh simulator.
 - `.agents/skills/`: the skills, above. `.claude/skills` links to it.
+- `.claude-plugin/marketplace.json` and `plugins/gesturekit/`: the Claude
+  Code marketplace and its plugin, above: `.claude-plugin/plugin.json`, the
+  stub `skills/verify-gestures/SKILL.md`, and the locator it runs,
+  `scripts/pinned-skill.sh`.
 - `artifacts/`, gitignored: what verification runs keep.
 - `docs/`: `design.md`, `automation-design.md`, and `measuring-the-lab.md`.
 - `Local.xcconfig.example`: copy to `Local.xcconfig`, gitignored, and set
