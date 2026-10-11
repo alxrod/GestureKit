@@ -8,8 +8,8 @@ private let grabHandleCarryLogger = Logger(subsystem: "net.alexbrodriguez.gestur
 
 /// What a carry by a grab handle says to the app at each of its steps: what
 /// it carries, where its middle goes, how far the hand has moved, the handle
-/// pinched, and the interaction's trace, if it's traced, for the app to add
-/// its own events to.
+/// pinched, as it ends how it ended, and the interaction's trace, if it's
+/// traced, for the app to add its own events to.
 @MainActor
 public struct GrabHandleCarryMoment<ID: Equatable & Sendable> {
     /// What's carried, as the app's `grab` named it.
@@ -24,6 +24,14 @@ public struct GrabHandleCarryMoment<ID: Equatable & Sendable> {
     public let handMoved: SIMD3<Float>
     /// The grab handle pinched.
     public let handle: Entity
+    /// How the carry ended, in `onEnd`: `.released`, the pinch let go;
+    /// `.cancelled`, its gesture cancelled, as when the system takes the
+    /// pinch away; or `.viewWent`, the view the carry is on gone mid-carry,
+    /// as when its immersive space closes. An app that saves where a thing
+    /// was let go may put it back where it was lifted from on either of the
+    /// last two, since no one chose where it stands. Nil in `onBegin` and
+    /// `onCarry`, as the carry hasn't ended.
+    public let ending: CarryEnding?
     /// The interaction's trace, while it's traced.
     public let trace: InteractionTrace?
 }
@@ -41,21 +49,26 @@ public struct GrabHandleCarryMoment<ID: Equatable & Sendable> {
 /// or through `CarriedEntity.stand`.
 ///
 /// It's simultaneous with the view's other gestures, so it sees every pinch
-/// on a handle whatever they take, and targets no other entity. Its gesture
-/// state tells a cancel, which calls no `onEnded`; whichever of the release
-/// and the reset comes first ends the pinch, and the other finds nothing to
-/// end. A carry begun always ends, once: released, cancelled, or as the view
-/// goes.
+/// on a handle whatever they take, and targets no other entity. A carry
+/// begun always ends, once, and `onEnd` is told how (`CarryEnding`):
+/// `.released` as the drag's `onEnded` comes; `.cancelled` as its gesture
+/// state resets with no `onEnded`, which SwiftUI may tell before or after a
+/// release's, so a reset waits a turn of the main actor and is a cancel only
+/// if no release has ended the pinch by then; and `.viewWent` as the view
+/// goes mid-carry. Whichever comes first ends the pinch, and the others find
+/// nothing to end.
 ///
 /// Each pinch is traced, given a recorder that's recording: its touch; its
 /// start, after how many points, carrying what from where; a step each time
 /// the hand has gone another 10 cm, the steps folding into one line with
-/// the farthest the hand went (`TraceLog`); and its release, with how far
-/// the hand and the middle went and where the middle ended up; its outcome
-/// "carried 0.42 m", "nothing", "under nothing", or "refused". A pinch
-/// that carried, was refused, or found nothing to carry and wasn't traced is
-/// logged at info level in one line as it ends; a traced one leaves the
-/// console its trace's summary. Its steps are logged not at all, as an app's
+/// the farthest the hand went (`TraceLog`); and its end, named for how it
+/// ended, a release, a cancel, or its view gone, with how far the hand and
+/// the middle went and where the middle ended up; its outcome "carried 0.42
+/// m", "carried 0.42 m, cancelled", "carried 0.42 m, view went", "nothing",
+/// "under nothing", or "refused". A pinch that carried, was refused, or
+/// found nothing to carry and wasn't traced is logged at info level in one
+/// line as it ends, saying how it ended; a traced one leaves the console its
+/// trace's summary. Its steps are logged not at all, as an app's
 /// `onCarry` can log them if it likes. A carried entity is named in both by
 /// its name, never described whole.
 public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: ViewModifier {
@@ -77,7 +90,8 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
 
     /// True while a pinch on a handle is under way. SwiftUI resets it both
     /// when the pinch ends and when it's cancelled, and only the end calls
-    /// `onEnded`, in no promised order.
+    /// `onEnded`, in no promised order, so its going false with the pinch
+    /// still under way a turn later means a cancel.
     @GestureState private var isDragging = false
 
     /// How far the hand goes between the steps the trace shows, in meters.
@@ -111,6 +125,9 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
     private final class Pinches {
         /// The pinch under way; nil between pinches.
         var underWay: UnderWay?
+        /// The last pinch's number, counting from 1, so a reset's wait for
+        /// a release ends only the pinch it was waiting on.
+        var serial = 0
     }
 
     /// A pinch under way: its rule, the handle it's on, its trace, and what
@@ -119,6 +136,8 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
         var pinch: CarryPinch<ID>
         let handle: Entity
         let trace: InteractionTrace?
+        /// Its number, from `Pinches.serial`.
+        let serial: Int
         /// The farthest it has moved from its touch, in the gesture's points.
         var farthest: Double = 0
         /// Where the carried middle was grabbed; nil until it is.
@@ -144,15 +163,23 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                     .targetedToEntity(where: .has(Marker.self))
                     .updating($isDragging) { _, isDragging, _ in isDragging = true }
                     .onChanged { pinchChanged($0) }
-                    .onEnded { _ in pinchEnded(how: "released") }
+                    .onEnded { _ in pinchEnded(.released) }
             )
+            // A release calls onEnded as well as resetting the gesture state;
+            // a cancel only resets it. SwiftUI doesn't promise which of the
+            // two a release tells first, so a reset waits a turn of the main
+            // actor, and ends the pinch as cancelled only if it's still under
+            // way then, unended by a release.
             .onChange(of: isDragging) { _, dragging in
-                if !dragging {
-                    pinchEnded(how: "ended as its gesture reset, a cancel or a release told in that order")
+                guard !dragging, let waiting = pinches.underWay?.serial else { return }
+                Task { @MainActor in
+                    await Task.yield()
+                    guard pinches.underWay?.serial == waiting else { return }
+                    pinchEnded(.cancelled)
                 }
             }
             .onDisappear {
-                pinchEnded(how: "ended as its view went")
+                pinchEnded(.viewWent)
             }
             #if DEBUG
             .modifier(PinchStandInEar(
@@ -165,7 +192,9 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                         guard let handle, handle.components.has(Marker.self) else { return }
                         pinchChanged(on: handle, distance: (points * points).sum().squareRoot(), translation: meters)
                     case .released:
-                        pinchEnded(how: "released")
+                        pinchEnded(.released)
+                    case .cancelled:
+                        pinchEnded(.cancelled)
                     }
                 },
                 isBusy: { pinches.underWay != nil },
@@ -217,7 +246,8 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
         GestureAutomation.shared.heard("carry", on: handle.name, "touch")
         #endif
         trace?.event("touch", "carries after \(Self.points(tuning.startDistance)) pt")
-        return UnderWay(pinch: CarryPinch(tuning: tuning), handle: handle, trace: trace)
+        pinches.serial += 1
+        return UnderWay(pinch: CarryPinch(tuning: tuning), handle: handle, trace: trace, serial: pinches.serial)
     }
 
     /// Does what the pinch is told to do, the pinch having moved `distance`
@@ -235,7 +265,7 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 #if DEBUG
                 GestureAutomation.shared.heard("carry", on: pinch.handle.name, "begin", ["carries": .string(grabHandleCarryName(of: id)), "middle": .vector(grabbed.middle), "after": .number(distance, decimals: 1)])
                 #endif
-                let moment = GrabHandleCarryMoment(id: id, middle: grabbed.middle, handMoved: .zero, handle: pinch.handle, trace: pinch.trace)
+                let moment = GrabHandleCarryMoment(id: id, middle: grabbed.middle, handMoved: .zero, handle: pinch.handle, ending: nil, trace: pinch.trace)
                 guard onBegin(moment) else {
                     pinch.trace?.event("refused", "the carry couldn't begin")
                     #if DEBUG
@@ -263,7 +293,7 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 #if DEBUG
                 GestureAutomation.shared.heard("carry", on: pinch.handle.name, "carry", ["middle": .vector(middle), "handMoved": .vector(handMoved)])
                 #endif
-                onCarry(GrabHandleCarryMoment(id: id, middle: middle, handMoved: handMoved, handle: pinch.handle, trace: pinch.trace))
+                onCarry(GrabHandleCarryMoment(id: id, middle: middle, handMoved: handMoved, handle: pinch.handle, ending: nil, trace: pinch.trace))
             case .ignore:
                 pinch.beganAfter = distance
                 pinches.underWay = pinch
@@ -272,19 +302,21 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                 GestureAutomation.shared.heard("carry", on: pinch.handle.name, "ignored")
                 #endif
             case .endCarry:
-                // Ended by `pinchEnded(how:)`, which tells the app.
+                // Ended by `pinchEnded(_:)`, which tells the app.
                 break
             }
         }
     }
 
-    /// The pinch ended, `how` saying how: a carry it began ends, the app
-    /// told where its middle was last put, and the trace finished.
-    private func pinchEnded(how: String) {
+    /// The pinch ended as `ending` says: a carry it began ends, the app told
+    /// where its middle was last put and how it ended, and the trace
+    /// finished.
+    private func pinchEnded(_ ending: CarryEnding) {
         guard var pinch = pinches.underWay else { return }
         pinches.underWay = nil
         let stage = pinch.pinch.stage
-        _ = pinch.pinch.end()
+        _ = pinch.pinch.end(ending)
+        let endName = Self.eventName(endedAs: ending)
         switch stage {
         case .moving(let grabbed):
             let middle = pinch.middle ?? grabbed.middle
@@ -295,36 +327,60 @@ public struct GrabHandleCarry<Marker: Component, ID: Equatable & Sendable>: View
                     \(went, format: .fixed(precision: 3), privacy: .public) m, from \(carryPlaceText(grabbed.middle), privacy: .public) \
                     to \(carryPlaceText(middle), privacy: .public), after \(pinch.beganAfter, format: .fixed(precision: 1), privacy: .public) pt, \
                     the hand \(simd_length(pinch.handMoved), format: .fixed(precision: 3), privacy: .public) m in \(pinch.steps, privacy: .public) steps; \
-                    \(how, privacy: .public)
+                    \(ending.description, privacy: .public)
                     """)
             }
-            pinch.trace?.event("release", """
-                \(how): the hand \(Self.meters(simd_length(pinch.handMoved))) m from the touch, \
+            pinch.trace?.event(endName, """
+                \(ending): the hand \(Self.meters(simd_length(pinch.handMoved))) m from the touch, \
                 the middle \(Self.meters(went)) m from where it was grabbed, at \(carryPlaceText(middle)), \
                 in \(pinch.steps) steps
                 """)
             #if DEBUG
-            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "end", ["middle": .vector(middle), "went": .number(Double(went), decimals: 4), "how": .string(how)])
+            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "end", ["middle": .vector(middle), "went": .number(Double(went), decimals: 4), "ending": .string(ending.rawValue)])
             #endif
-            onEnd(GrabHandleCarryMoment(id: grabbed.id, middle: middle, handMoved: pinch.handMoved, handle: pinch.handle, trace: pinch.trace))
-            pinch.trace?.finish("carried \(Self.meters(went)) m")
+            onEnd(GrabHandleCarryMoment(id: grabbed.id, middle: middle, handMoved: pinch.handMoved, handle: pinch.handle, ending: ending, trace: pinch.trace))
+            pinch.trace?.finish(Self.outcome(carried: went, endedAs: ending))
         case .waiting:
             #if DEBUG
-            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "release", ["after": .number(pinch.farthest, decimals: 1)])
+            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "release", ["after": .number(pinch.farthest, decimals: 1), "ending": .string(ending.rawValue)])
             #endif
-            pinch.trace?.event("release", "\(how), after only \(Self.points(pinch.farthest)) pt")
+            pinch.trace?.event(endName, "\(ending), after only \(Self.points(pinch.farthest)) pt")
             pinch.trace?.finish("nothing")
         case .ignored:
             if pinch.trace == nil {
                 grabHandleCarryLogger.info("""
                     A pinch on \(pinch.handle.name) carried nothing: after \(pinch.beganAfter, format: .fixed(precision: 1), privacy: .public) pt, \
-                    \(pinch.refused ? "its carry couldn't begin" : "the handle was under nothing to carry", privacy: .public); \(how, privacy: .public)
+                    \(pinch.refused ? "its carry couldn't begin" : "the handle was under nothing to carry", privacy: .public); \(ending.description, privacy: .public)
                     """)
             }
-            pinch.trace?.event("release", how)
+            #if DEBUG
+            GestureAutomation.shared.heard("carry", on: pinch.handle.name, "release", ["ending": .string(ending.rawValue)])
+            #endif
+            pinch.trace?.event(endName, ending.description)
             pinch.trace?.finish(pinch.refused ? "refused" : "under nothing")
         case .over:
             pinch.trace?.finish("nothing")
+        }
+    }
+
+    /// The trace's name for a pinch's end: "release", "cancel", or "view
+    /// went".
+    private static func eventName(endedAs ending: CarryEnding) -> String {
+        switch ending {
+        case .released: "release"
+        case .cancelled: "cancel"
+        case .viewWent: "view went"
+        }
+    }
+
+    /// A carry's outcome for its trace: "carried 0.42 m", and how it ended
+    /// where that wasn't a release, "carried 0.42 m, cancelled" or
+    /// "carried 0.42 m, view went".
+    private static func outcome(carried went: Float, endedAs ending: CarryEnding) -> String {
+        switch ending {
+        case .released: "carried \(meters(went)) m"
+        case .cancelled: "carried \(meters(went)) m, cancelled"
+        case .viewWent: "carried \(meters(went)) m, view went"
         }
     }
 
@@ -354,9 +410,10 @@ extension View {
     /// pinched, what it carries and where its middle is, in the frame
     /// `parent` names for that handle, the carried thing's parent, or the
     /// scene's for nil; `onBegin` may refuse the carry; `onCarry` stands the
-    /// thing at each step; and `onEnd` lets it go. `tuning` is read as each
-    /// pinch touches, so a change takes effect at the next one; `recorder`,
-    /// given, traces each pinch under `gesture`'s name.
+    /// thing at each step; and `onEnd` lets it go, its moment's `ending`
+    /// saying whether it was released, cancelled, or its view went. `tuning`
+    /// is read as each pinch touches, so a change takes effect at the next
+    /// one; `recorder`, given, traces each pinch under `gesture`'s name.
     ///
     ///     content
     ///         .grabHandleCarry(of: GrabHandleComponent.self, tuning: tuning, recorder: trace,
@@ -392,7 +449,11 @@ extension View {
     /// parent, its middle its origin, 1:1 with the hand, never nearer the
     /// head `headTracker` follows than `tuning.nearestToHead`, and turned to
     /// face it (`CarriedEntity.stand`). Each pinch's trace ends with where
-    /// the entity stood about the head. `onEnd` is told as each is let go.
+    /// the entity stood about the head. `onEnd` is told as each carry ends,
+    /// however it ends: let go, cancelled, or its view gone mid-carry, the
+    /// entity stands where the hand last put it, as each step stood it. An
+    /// app that would put it back on a cancel uses `grabHandleCarry(of:…)`
+    /// and its moment's `ending`.
     public func grabHandlesCarryEntities(
         tuning: CarryTuning = .standard,
         facing: FacingTuning = .standard,

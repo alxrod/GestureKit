@@ -21,10 +21,12 @@ import simd
 ///   translation to where its picture was (`Action.carry`). Where the middle
 ///   is now doesn't count, so the hand back where it touched puts the thing
 ///   back where it was.
-/// - **Its end**, released or cancelled, ends the carry
-///   (`Action.endCarry`). Whichever of the release and the gesture's reset
-///   comes first ends it; once it has ended, it does nothing more, so a
-///   pinch after it begins afresh.
+/// - **Its end**, released, cancelled, or its view gone, ends the carry
+///   (`Action.endCarry`), and the pinch keeps how it ended (`ending`), so
+///   the caller can tell the app whether the person let go or the carry
+///   was taken from them. The first end it's told ends it, and says how;
+///   once it has ended, it does nothing more, so a release that comes after
+///   a cancel ends nothing, and a pinch after it begins afresh.
 ///
 /// A change that isn't a number moves nothing.
 ///
@@ -55,7 +57,7 @@ public struct CarryPinch<ID: Equatable & Sendable>: Equatable, Sendable {
         case moving(Grabbed)
         /// It carries nothing until it ends.
         case ignored
-        /// Ended, released or cancelled.
+        /// Ended, as `ending` says.
         case over
     }
 
@@ -70,7 +72,8 @@ public struct CarryPinch<ID: Equatable & Sendable>: Equatable, Sendable {
         /// The pinch moved far enough, but its handle is under nothing: the
         /// rest of it carries nothing.
         case ignore
-        /// End the carry of the thing named `id`.
+        /// End the carry of the thing named `id`, as the pinch's `ending`
+        /// says it ended.
         case endCarry(id: ID)
     }
 
@@ -79,6 +82,10 @@ public struct CarryPinch<ID: Equatable & Sendable>: Equatable, Sendable {
 
     /// What the pinch has come to so far.
     public private(set) var stage = Stage.waiting
+
+    /// How the pinch ended, the first end it was told; nil until it ends.
+    /// A pinch that carried nothing says how it ended too.
+    public private(set) var ending: CarryEnding?
 
     public init(tuning: CarryTuning = .standard) {
         self.tuning = tuning
@@ -114,10 +121,15 @@ public struct CarryPinch<ID: Equatable & Sendable>: Equatable, Sendable {
         stage = .ignored
     }
 
-    /// The pinch ended, released or cancelled: a carry it began ends.
-    public mutating func end() -> [Action] {
+    /// The pinch ended as `ending` says, released unless told otherwise: a
+    /// carry it began ends, and the pinch keeps how. Only the first end
+    /// counts: told again, as a release that comes after the gesture's
+    /// cancel, it ends nothing and keeps the first ending.
+    public mutating func end(_ ending: CarryEnding = .released) -> [Action] {
+        guard stage != .over else { return [] }
         let was = stage
         stage = .over
+        self.ending = ending
         guard case .moving(let grabbed) = was else { return [] }
         return [.endCarry(id: grabbed.id)]
     }

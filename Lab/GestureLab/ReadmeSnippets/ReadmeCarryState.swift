@@ -15,6 +15,8 @@ struct BoardHandle: Component {
 @MainActor @Observable
 final class Boards {
     var middles: [Int: SIMD3<Float>] = [1: [-0.4, 1.3, -1], 2: [0.4, 1.3, -1]]
+    /// Where each board being carried was lifted from.
+    var liftedFrom: [Int: SIMD3<Float>] = [:]
 }
 
 struct BoardsView: View {
@@ -43,11 +45,23 @@ struct BoardsView: View {
                       let middle = boards.middles[board] else { return nil }
                 return CarryPinch.Grabbed(id: board, middle: middle)
             },
+            onBegin: { step in
+                boards.liftedFrom[step.id] = step.middle
+                return true
+            },
             onCarry: { step in
                 // Where the hand puts it, but never nearer the head than 0.3 m.
                 let head = HeadTracker.shared.viewerPosition() ?? UntrackedHead.eye
                 let before = boards.middles[step.id] ?? step.middle
                 boards.middles[step.id] = HandCarry.middle(carriedTo: step.middle, clearOf: head, from: before)
+            },
+            onEnd: { step in
+                let liftedFrom = boards.liftedFrom.removeValue(forKey: step.id)
+                // Released, it stays where the hand left it. Cancelled, or
+                // its view gone mid-carry, it goes back where it was.
+                if step.ending != .released, let liftedFrom {
+                    boards.middles[step.id] = liftedFrom
+                }
             }
         )
     }

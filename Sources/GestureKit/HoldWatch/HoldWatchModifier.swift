@@ -113,7 +113,7 @@ private struct HoldWatchModifier: ViewModifier {
                 step: { step in
                     switch step {
                     case .moved(let points, _, _, _): pinchMoved(Vector3D(x: points.x, y: points.y, z: points.z))
-                    case .released: pinchEnded()
+                    case .released, .cancelled: pinchEnded()
                     }
                 },
                 isBusy: { pinch.watch != nil || pinch.timer != nil },
