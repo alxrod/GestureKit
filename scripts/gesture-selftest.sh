@@ -11,11 +11,11 @@
 # pluck, a tap, scrolls, a lift let go, a yank that stays a scroll, a lift
 # given back to the scroll, and the card carried, on the grid; a tap, a drag,
 # a flick and its coast, a pickup and carry, holds, a drag across, and a
-# tuning on the press's surface and tab; carries, one stopped short of the
-# head, on the panels; placements below two gazes; the smoke on every
-# station; and a script run at launch. Whatever happens, it then deletes the
-# simulator and the build, unless GESTURE_SELFTEST_KEEP=1. Run it through
-# your build lock where agents share the machine: it builds.
+# tuning on the press's surface and tab; carries, one cancelled and one
+# stopped short of the head, on the panels; placements below two gazes; the
+# smoke on every station; and a script run at launch. Whatever happens, it
+# then deletes the simulator and the build, unless GESTURE_SELFTEST_KEEP=1.
+# Run it through your build lock where agents share the machine: it builds.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -133,8 +133,13 @@ expect "the press's smoke passes" '.ok and .result.failed == 0 and .result.passe
 
 # The panels: carried, and stood clear of the head.
 expect "the carry and face station is chosen" '.outcome == "chosen"' station carry-and-face
-expect "a panel is carried by its handle where the hand puts it" \
-  '.outcome == "carried" and ([.result.stood, .result.asked] | transpose | all(.[0] - .[1] | fabs < 0.002))' carry panel-b by=0.1,0,0.2
+expect "a panel is carried by its handle where the hand puts it, and released" \
+  '.outcome == "carried" and .result.ending == "released" and ([.result.stood, .result.asked] | transpose | all(.[0] - .[1] | fabs < 0.002))' carry panel-b by=0.1,0,0.2
+expect "a carry whose gesture is cancelled ends cancelled, the panel standing where the hand last put it" \
+  '.outcome == "carried" and .result.ending == "cancelled" and ([.result.stood, .result.asked] | transpose | all(.[0] - .[1] | fabs < 0.002)) and ([.trace[] | select(.gesture == "Carry") | .outcome] | any(test("cancelled")))' \
+  carry panel-b by=-0.1,0,-0.2 ending=cancelled
+expect "a carry can't be driven to end as its view goes" \
+  '.ok == false and (.error | test("released or cancelled"))' carry panel-b ending=viewWent
 expect "a panel carried into the head stops 0.3 m from it" \
   '.outcome == "carried" and (.result.fromTheHead - 0.3 | fabs < 0.002)' carry panel-a to=0,1.6,-0.1
 expect "the panels' smoke passes" '.ok and .result.failed == 0 and .result.passed == 6' smoke
