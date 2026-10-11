@@ -101,6 +101,25 @@ and worth driving`, the targets it counts, and your app's registered state.
 Run it before the first drive and after any drive that surprised you; if
 the checkout changed since the build, launch a new run.
 
+It also holds this skill against the GestureKit the driver came from. A
+copy `gesturekit-drive install-skill` made names the commit it came from in
+this `SKILL.md`'s frontmatter, `metadata: gesturekit-revision`. The doctor
+compares that with the commit of the GestureKit checkout the run built
+`gesturekit-drive` from:
+- `ok    this skill came from GestureKit <commit>, as gesturekit-drive did`
+  when they match.
+- `warn  this skill came from GestureKit <old>, but gesturekit-drive from
+  GestureKit <new>; bring it in step with: … install-skill --update --into
+  …` when your app's GestureKit moved on since the skill was installed.
+  Run that command, then read this skill again before driving, since its
+  commands may have changed.
+- A `warn` line when git can't say which commit the checkout is at.
+
+A warning never fails the doctor. A copy with no stamp, like GestureKit's
+own, is passed over. `gesturekit-drive` itself warns the same way on
+stderr, once a run, so a `capture`'s `<label>.stderr.txt` may hold the
+warning.
+
 By hand: `xcrun simctl spawn <udid> launchctl list | grep <bundle-id>`
 gives the app's pid, `lsof -nP -iTCP:<port> -sTCP:LISTEN` must show that
 pid, and `gesturekit-drive --port <port> state` must answer `"ready": true`
@@ -216,10 +235,15 @@ command-line tools, and a visionOS simulator runtime. Sourced, it defines its
 functions and runs nothing, for a launcher of your own, as GestureKit's lab
 has (`verify-gesturelab`'s `launch-lab.sh`).
 
-`gesturekit-drive install-skill [--into <dir>] [--replace]` copies this
-skill into a repository, `.agents/skills/` unless `--into` says otherwise,
-refusing to replace one there unless `--replace`. For Claude Code, link
-it: `mkdir -p .claude && ln -s ../.agents/skills .claude/skills`.
+`gesturekit-drive install-skill [--into <dir>] [--update | --replace]`
+copies this skill into a repository, `.agents/skills/` unless `--into` says
+otherwise, stamped with the GestureKit commit it came from. It refuses to
+replace a copy that's there; `--update` replaces one from another commit,
+and `--replace` any. Codex and Cursor read `.agents/skills` as it is. For
+Claude Code, GestureKit's plugin loads the skill of the GestureKit your
+`Package.resolved` pins (`/plugin marketplace add alxrod/GestureKit`, then
+`/plugin install gesturekit@gesturekit`); or link the folder: `mkdir -p
+.claude && ln -s ../.agents/skills .claude/skills`.
 
 ## What the automation stands in for
 

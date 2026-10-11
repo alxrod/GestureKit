@@ -1,0 +1,17 @@
+{
+  "name": "gesturekit",
+  "owner": {
+    "name": "Alex Rodriguez",
+    "url": "https://github.com/alxrod"
+  },
+  "description": "GestureKit's agent skills for Claude Code, each loaded from the GestureKit your app pins",
+  "plugins": [
+    {
+      "name": "gesturekit",
+      "source": "./plugins/gesturekit",
+      "description": "Verify the gestures of a visionOS app on GestureKit with gesturekit-drive, with the verify-gestures skill of the GestureKit commit the app pins",
+      "category": "development",
+      "tags": ["visionos", "gestures", "testing", "simulator", "swift"]
+    }
+  ]
+}

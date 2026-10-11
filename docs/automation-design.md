@@ -166,11 +166,20 @@ Here's what each prints:
 - A failure exits 1.
 - `launch --script FILE` runs FILE's commands as the app settles, and prints
   their results.
-- `install-skill [--into DIR] [--replace]` copies the package's own
-  `verify-gestures` skill, `.agents/skills/verify-gestures/` in its
+- `install-skill [--into DIR] [--update | --replace]` copies the package's
+  own `verify-gestures` skill, `.agents/skills/verify-gestures/` in its
   checkout, found beside the tool's sources, into the app's repository, so
   the app's agents inherit how to launch, check, drive, and prove its
-  gestures with the driver, and clean up after.
+  gestures with the driver, and clean up after. The copy's frontmatter
+  names the GestureKit commit it came from (`metadata:
+  gesturekit-revision`), where git can vouch for it; `--update` replaces a
+  copy from another commit, `--replace` any. Every other command warns on
+  stderr, once, when the copy found from the working directory up to the
+  git root came from another commit than the driver's, since its
+  instructions may not match this driver; the skill's doctor warns the same
+  way. Claude Code, which doesn't read `.agents/skills`, gets the skill
+  from the GestureKit plugin in `plugins/gesturekit/`, whose stub loads the
+  skill at the commit the app's `Package.resolved` pins.
 
 For GestureLab, the `verify-gesturelab` skill proves a change one feature
 at a time, with its evidence kept, and `scripts/gesture-drive.sh` keeps a

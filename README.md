@@ -966,18 +966,55 @@ says what happened.
 
 5. **Give your agents the skill.** `install-skill` copies GestureKit's
    `verify-gestures` skill into your repository's `.agents/skills/`, or the
-   folder `--into` names, refusing to replace one already there unless
-   `--replace`. It tells an agent how to launch your app in a simulator of
-   its own, check that it's driving the right build, drive each gesture with
-   a check written first, keep each answer, trace, screenshot, and state as
-   evidence, clean up only what it made, and grow a map of your app's
-   gestures. Its helper, `scripts/gesture-verify.sh`, does each step.
+   folder `--into` names. It tells an agent how to launch your app in a
+   simulator of its own, check that it's driving the right build, drive
+   each gesture with a check written first, keep each answer, trace,
+   screenshot, and state as evidence, clean up only what it made, and grow a
+   map of your app's gestures. Its helper, `scripts/gesture-verify.sh`, does
+   each step.
 
    ```sh
    swift run gesturekit-drive install-skill
    ```
 
-   For Claude Code, link `.claude/skills` to `.agents/skills`.
+   The skill has to match the GestureKit your app pins, since it drives the
+   `gesturekit-drive` that GestureKit builds:
+   - **The stamp.** The copy's `SKILL.md` names the GestureKit commit it
+     came from, in its frontmatter's `metadata` as `gesturekit-revision`.
+     Where git can't vouch for the skill's bytes, as in a folder that isn't
+     a git checkout of GestureKit's own, or one with uncommitted changes to
+     the skill, it writes no stamp and says so.
+   - **Out of step.** After you update GestureKit, each `gesturekit-drive`
+     command but `install-skill` warns on stderr, once, when the copy from
+     your working directory up to the git root names another commit, with
+     both commits and the command to fix it. The skill's doctor warns the
+     same way. A warning never fails a command.
+   - **`--update`** replaces the copy only if it came from another commit,
+     or names none, and says which. `--replace` replaces it regardless; with
+     neither, `install-skill` refuses to touch a copy that's there.
+
+   ```sh
+   swift run gesturekit-drive install-skill --update
+   ```
+
+   Codex and Cursor read `.agents/skills` as installed. Claude Code reads
+   `.claude/skills` instead: add GestureKit's plugin, whose
+   `verify-gestures` loads the skill of the GestureKit commit your
+   `Package.resolved` pins, SwiftPM's or your Xcode project's, from its
+   checkout, or prefers your installed copy when its stamp names that
+   commit. Where nothing is checked out at that commit, it says what to
+   resolve, and never reads another commit's skill. In a Claude Code
+   session:
+
+   ```text
+   /plugin marketplace add alxrod/GestureKit
+   /plugin install gesturekit@gesturekit
+   ```
+
+   Or in one step, from Claude Code 2.1.275: `/plugin install gesturekit
+   --marketplace alxrod/GestureKit`. Its skill is
+   `/gesturekit:verify-gestures`. Rather than the plugin, you can link the
+   folder: `mkdir -p .claude && ln -s ../.agents/skills .claude/skills`.
 
 ### How things are named
 

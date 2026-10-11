@@ -11,6 +11,7 @@
 // commands and what each runs for real.
 #if os(macOS)
 import Foundation
+import SkillStamp
 
 @main
 struct GestureKitDrive {
@@ -57,10 +58,15 @@ struct Driver {
           commands         print the app's commands and what each takes
           send JSON        send any command as JSON
           screenshot [FILE]  save what the simulator shows, as a PNG
-          install-skill [--into DIR] [--replace]
+          install-skill [--into DIR] [--update | --replace]
                            copy GestureKit's verify-gestures skill, which drives and proves an
-                           app's gestures with this tool, into DIR, .agents/skills unless given;
-                           refuses to replace one already there unless --replace
+                           app's gestures with this tool, into DIR, .agents/skills unless given,
+                           stamped with the GestureKit commit it came from; refuses to replace
+                           one already there, but --update replaces one from another commit and
+                           --replace replaces any
+
+        Each command but install-skill warns on stderr when the verify-gestures skill installed
+        from here up to the git root came from another GestureKit commit than this tool.
 
         Values: vectors are meters, x right, y up, z toward you, as 0,0,0.05; a grid scrolls
         in points; times are seconds; a value that starts with { or [ is JSON.
@@ -97,7 +103,7 @@ struct Driver {
                     guard let seconds = Double(value) else { return fail("--timeout is a number of seconds.") }
                     timeout = seconds
                 }
-            case "--script", "--into", "--replace":
+            case "--script", "--into", "--replace", "--update":
                 rest.append(argument)
             default:
                 if argument.hasPrefix("--") { return fail("Unknown option \(argument).\n\n\(Self.usage)") }
@@ -109,6 +115,7 @@ struct Driver {
             return 64
         }
         rest.removeFirst()
+        if !["install-skill", "help", "-h"].contains(command) { warnIfInstalledSkillIsOutOfStep() }
         do {
             switch command {
             case "help", "-h": print(Self.usage); return 0
@@ -236,24 +243,90 @@ struct Driver {
 
     // MARK: The skill
 
+    /// The root of the GestureKit checkout this tool was built from: `swift
+    /// run` builds it there, from this file, three folders below it.
+    static let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+
     /// The verification skill this package ships for apps on GestureKit, in
-    /// the checkout this tool was built from: `swift run` builds it there,
-    /// from this file, three folders below the package's root.
-    static let shippedSkill = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .appendingPathComponent(".agents/skills/verify-gestures", isDirectory: true)
+    /// that checkout.
+    static let shippedSkill = packageRoot.appendingPathComponent(InstalledSkill.relativeFolder, isDirectory: true)
+
+    /// The GestureKit commit this tool, and the skill beside it, came from,
+    /// as git says of its checkout, or why git can't say: a SwiftPM or
+    /// Xcode checkout of the package is a git repository of its own.
+    static func ownRevision() -> CheckoutRevision {
+        let root = packageRoot.resolvingSymlinksInPath().path
+        let topLevel = git(["-C", root, "rev-parse", "--show-toplevel"])
+            .map { URL(fileURLWithPath: $0.trimmingCharacters(in: .whitespacesAndNewlines)).resolvingSymlinksInPath().path }
+        return CheckoutRevision.reading(
+            packageRoot: root,
+            topLevel: topLevel,
+            head: topLevel == nil ? nil : git(["-C", root, "rev-parse", "HEAD"]),
+            skillChanges: topLevel == nil ? nil : git(["-C", root, "status", "--porcelain", "--", InstalledSkill.relativeFolder])
+        )
+    }
+
+    /// What `git` printed, or nil if it failed or isn't there.
+    static func git(_ arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = arguments
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let printed = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? String(decoding: printed, as: UTF8.self) : nil
+    }
+
+    /// The stamp in the copy of the skill at `folder`, or nil.
+    static func stamp(ofSkillAt folder: URL) -> String? {
+        (try? String(contentsOf: folder.appendingPathComponent("SKILL.md"), encoding: .utf8)).flatMap(SkillStamp.revision(in:))
+    }
+
+    /// Warns on stderr, once a run, when the `verify-gestures` skill
+    /// installed in this app, the nearest `.agents/skills/verify-gestures`
+    /// from the working directory up to the git root, came from another
+    /// GestureKit commit than this tool, naming both and how to update it,
+    /// so an agent never drives with instructions for another version.
+    /// Never fails: a copy with no stamp, GestureKit's own, or a revision
+    /// git can't say, passes quietly.
+    func warnIfInstalledSkillIsOutOfStep() {
+        let files = FileManager.default
+        let workingDirectory = files.currentDirectoryPath
+        let directories = InstalledSkill.searchedDirectories(from: workingDirectory) {
+            files.fileExists(atPath: URL(fileURLWithPath: $0).appendingPathComponent(".git").path)
+        }
+        guard let folder = directories
+            .map({ URL(fileURLWithPath: $0).appendingPathComponent(InstalledSkill.relativeFolder, isDirectory: true) })
+            .first(where: { files.fileExists(atPath: $0.appendingPathComponent("SKILL.md").path) }),
+            folder.resolvingSymlinksInPath().path != Self.shippedSkill.resolvingSymlinksInPath().path,
+            let installed = Self.stamp(ofSkillAt: folder)
+        else { return }
+        let comparison = SkillStampComparison(installed: installed, driver: Self.ownRevision().revision)
+        let update = InstalledSkill.updateCommand(for: folder.deletingLastPathComponent().path, from: workingDirectory)
+        if let warning = comparison.warning(skill: folder.path, update: update) {
+            FileHandle.standardError.write(Data((warning + "\n").utf8))
+        }
+    }
 
     /// Copies the `verify-gestures` skill into `--into`'s folder, the
     /// current folder's `.agents/skills` unless given, as
-    /// `<folder>/verify-gestures`, refusing to replace one already there
-    /// unless `--replace`, so an adopter's agents inherit how to drive and
-    /// prove its gestures with this tool.
+    /// `<folder>/verify-gestures`, so an adopter's agents inherit how to
+    /// drive and prove its gestures with this tool. The copy's SKILL.md is
+    /// stamped with the GestureKit commit it came from, where git can say,
+    /// so a later run can tell it's out of step. It refuses to replace a
+    /// copy that's there, unless `--update`, which replaces one from
+    /// another commit, or `--replace`, which replaces any.
     func installSkill(_ arguments: [String]) throws -> Int32 {
         var folder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".agents/skills", isDirectory: true)
         var replaces = false
+        var updates = false
         var rest = arguments
         while let next = rest.first {
             rest.removeFirst()
@@ -264,9 +337,14 @@ struct Driver {
                 folder = URL(fileURLWithPath: path, isDirectory: true)
             case "--replace":
                 replaces = true
+            case "--update":
+                updates = true
             default:
-                throw DriveError("install-skill takes --into FOLDER and --replace; not \(next).")
+                throw DriveError("install-skill takes --into FOLDER, and --update or --replace; not \(next).")
             }
+        }
+        guard !(replaces && updates) else {
+            throw DriveError("install-skill takes --update or --replace, not both: --update replaces a copy from another GestureKit commit, --replace any copy.")
         }
         let files = FileManager.default
         let source = Self.shippedSkill
@@ -274,14 +352,40 @@ struct Driver {
             throw DriveError("The skill isn't beside this tool's sources, at \(source.path); run gesturekit-drive from a checkout of GestureKit.")
         }
         let destination = folder.appendingPathComponent("verify-gestures", isDirectory: true)
-        if files.fileExists(atPath: destination.path) {
-            guard replaces else {
-                throw DriveError("\(destination.path) is there already; add --replace to replace it with GestureKit's.")
-            }
+        guard destination.resolvingSymlinksInPath().path != source.resolvingSymlinksInPath().path else {
+            throw DriveError("\(destination.path) is GestureKit's own skill, which this tool copies from; install it into an app's repository.")
+        }
+        let revision = Self.ownRevision()
+        let exists = files.fileExists(atPath: destination.path)
+        let installed = exists ? Self.stamp(ofSkillAt: destination) : nil
+        switch SkillInstallPlan.plan(exists: exists, installed: installed, revision: revision.revision, replaces: replaces, updates: updates) {
+        case .refuse(let reason):
+            throw DriveError("\(destination.path) \(reason).")
+        case .keep(let kept):
+            print("\(destination.path) came from GestureKit \(kept), as this gesturekit-drive did; left as it is.")
+            return 0
+        case .replace(let from):
             try files.removeItem(at: destination)
+            print("Replacing \(destination.path), which came from \(from.map { "GestureKit \($0)" } ?? "a GestureKit commit its SKILL.md doesn't name").")
+        case .install:
+            break
         }
         try files.createDirectory(at: folder, withIntermediateDirectories: true)
         try files.copyItem(at: source, to: destination)
+        let skillFile = destination.appendingPathComponent("SKILL.md")
+        var stampNote: String
+        do {
+            let text = try String(contentsOf: skillFile, encoding: .utf8)
+            try SkillStamp.stamping(text, with: revision.revision).write(to: skillFile, atomically: true, encoding: .utf8)
+            switch revision {
+            case .known(let commit):
+                stampNote = "Stamped it with GestureKit \(commit), the commit this gesturekit-drive is: each run warns if they part, and install-skill --update brings it in step."
+            case .unknown(let reason):
+                stampNote = "Wrote no stamp: \(reason), so gesturekit-drive can't tell later whether the copy is in step."
+            }
+        } catch {
+            stampNote = "Wrote no stamp: \(error), so gesturekit-drive can't tell later whether the copy is in step."
+        }
         let copied = files.enumerator(atPath: destination.path)?.compactMap { $0 as? String }
             .filter { !$0.hasPrefix(".") && !$0.contains("/.") }
             .filter { path in
@@ -291,9 +395,11 @@ struct Driver {
             .sorted() ?? []
         print("Installed GestureKit's verify-gestures skill in \(destination.path):")
         for path in copied { print("  \(path)") }
-        let claudeSkills = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".claude/skills")
+        print(stampNote)
+        print("Codex and Cursor read .agents/skills as it is. Claude Code doesn't: add GestureKit's plugin, whose verify-gestures loads the skill of the GestureKit your Package.resolved pins, with /plugin marketplace add alxrod/GestureKit, then /plugin install gesturekit@gesturekit.")
+        let claudeSkills = URL(fileURLWithPath: files.currentDirectoryPath).appendingPathComponent(".claude/skills")
         if folder.standardizedFileURL.path.hasSuffix("/.agents/skills"), !files.fileExists(atPath: claudeSkills.path) {
-            print("Claude Code reads .claude/skills; to share these, link it: mkdir -p .claude && ln -s ../.agents/skills .claude/skills")
+            print("Or link the folder for Claude Code: mkdir -p .claude && ln -s ../.agents/skills .claude/skills")
         }
         print("Its SKILL.md says how to launch your app, check, drive, capture, and clean up; add /artifacts to your .gitignore.")
         return 0

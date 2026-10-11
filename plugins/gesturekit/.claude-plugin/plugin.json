@@ -1,0 +1,13 @@
+{
+  "name": "gesturekit",
+  "displayName": "GestureKit",
+  "description": "Verify the gestures of a visionOS app on GestureKit with gesturekit-drive, with the verify-gestures skill of the GestureKit commit the app pins",
+  "author": {
+    "name": "Alex Rodriguez",
+    "url": "https://github.com/alxrod"
+  },
+  "homepage": "https://github.com/alxrod/GestureKit",
+  "repository": "https://github.com/alxrod/GestureKit",
+  "license": "MIT",
+  "keywords": ["visionos", "gestures", "gesturekit", "testing", "simulator"]
+}
