@@ -262,7 +262,7 @@ cmd_doctor() {
   pid="$(app_pid || true)"
   if [ -n "$pid" ]; then pass "$GESTURE_APP_BUNDLE runs in it, pid $pid"; else flag "$GESTURE_APP_BUNDLE isn't running in the run's simulator"; fi
 
-  listeners="$(lsof -nP -iTCP:"$GESTUREKIT_AUTOMATION_PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | tr '\n' ' ')"
+  listeners="$( { lsof -nP -iTCP:"$GESTUREKIT_AUTOMATION_PORT" -sTCP:LISTEN -t 2>/dev/null || true; } | sort -u | tr '\n' ' ')"
   if [ -z "$listeners" ]; then
     flag "nothing listens on 127.0.0.1:$GESTUREKIT_AUTOMATION_PORT"
   elif [ -n "$pid" ] && [ "${listeners% }" = "$pid" ]; then
