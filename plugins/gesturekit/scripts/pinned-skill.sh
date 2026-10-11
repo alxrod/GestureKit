@@ -129,6 +129,19 @@ print_skill() {
   awk 'NR == 1 && /^---[ \t\r]*$/ { frontmatter = 1; next } frontmatter && /^---[ \t\r]*$/ { frontmatter = 0; next } !frontmatter' "$folder/SKILL.md"
 }
 
+# How to bring the installed copy, main's $installed, in step: with the
+# driver of the checkout at the pinned commit ($1) where there's one, built
+# outside it so it stays as resolved, else as the project runs gesturekit-drive.
+update_hint() {
+  local into
+  into="$(dirname "$installed")"
+  if [ -n "$1" ]; then
+    printf '%s' "Bring it in step from \`$root\` with the pinned GestureKit's driver: \`swift run --package-path \"$1\" --scratch-path \"$temporary/gesturekit-drive\" gesturekit-drive install-skill --update --into \"$into\"\`."
+  else
+    printf '%s' "Once the pinned commit is checked out, bring it in step with its driver: \`gesturekit-drive install-skill --update --into \"$into\"\`, run as the project runs gesturekit-drive (\`swift run gesturekit-drive …\` in a package that depends on GestureKit)."
+  fi
+}
+
 # What to run to check out the pinned commit, for each pin file given.
 how_to_resolve() {
   local file folder
@@ -237,7 +250,9 @@ main() {
     fi
     say "# verify-gestures: no GestureKit pin found"
     say ""
-    say "No Package.resolved from \`$start\` up to \`$root\`, or below it, pins GestureKit, and no SwiftPM build here records it as a local package, so there's no telling which GestureKit's skill matches this project, and none is guessed."
+    local searched="from \`$start\` up to \`$root\`"
+    [ "$start" = "$root" ] && searched="in \`$start\`"
+    say "No Package.resolved $searched, or below it, pins GestureKit, and no SwiftPM build here records it as a local package, so there's no telling which GestureKit's skill matches this project, and none is guessed."
     say ""
     say "- If the project depends on GestureKit, resolve its packages so Package.resolved pins it: \`swift package resolve\` in the package's folder, or for an Xcode project \`xcodebuild -resolvePackageDependencies -project <App>.xcodeproj -scheme <scheme> -derivedDataPath \"$resolve_folder\"\`. Then load this skill again."
     say "- If it depends on GestureKit by a path in Xcode, read \`$skill_folder/SKILL.md\` in that folder."
@@ -276,16 +291,16 @@ main() {
   local described="GestureKit $revision${ref:+ ($ref)}"
 
   # The installed copy, if it came from the pinned commit; else say so.
-  local installed_note=""
+  local installed_problem=""
   if [ -n "$installed" ]; then
     if [ "$stamp" = "$revision" ]; then
       print_skill "$installed" \
         "It's the copy \`gesturekit-drive install-skill\` put in \`$(shown "$installed")\`, stamped with $described, which $pinned_by pins."
       return 0
     elif [ -n "$stamp" ]; then
-      installed_note="The copy installed in \`$(shown "$installed")\` came from GestureKit $stamp, not the pinned commit, so it isn't the one read here. Bring it in step with the pinned GestureKit's driver: \`gesturekit-drive install-skill --update\` (\`swift run gesturekit-drive install-skill --update\` in a package)."
+      installed_problem="The copy installed in \`$(shown "$installed")\` came from GestureKit $stamp, not the pinned commit, so it isn't the one read here."
     else
-      installed_note="The copy installed in \`$(shown "$installed")\` carries no stamp naming the commit it came from, so it isn't the one read here. Replace it with the pinned GestureKit's: \`gesturekit-drive install-skill --update\` (\`swift run gesturekit-drive install-skill --update\` in a package)."
+      installed_problem="The copy installed in \`$(shown "$installed")\` carries no stamp naming the commit it came from, so it isn't the one read here."
     fi
   fi
 
@@ -342,6 +357,7 @@ main() {
       if [ ! -f "$extract_root/$revision/$skill_folder/SKILL.md" ]; then
         local staging
         staging="$(mktemp -d "$extract_root/.extracting.XXXXXX" 2>/dev/null)" || continue
+        chmod 755 "$staging"
         if git --git-dir "$git_dir" archive --format=tar "$revision" "$skill_folder" | tar -x -C "$staging" 2>/dev/null \
           && [ -f "$staging/$skill_folder/SKILL.md" ]; then
           rm -rf "${extract_root:?}/$revision"
@@ -358,11 +374,16 @@ main() {
   fi
 
   if [ -n "$found" ]; then
-    local whence="the checkout \`$(dirname "$(dirname "$(dirname "$found")")")\`"
-    [ -n "$extracted" ] && whence="SwiftPM's repository cache, \`$extracted\`, extracted with git archive"
+    local whence checkout_root=""
+    if [ -n "$extracted" ]; then
+      whence="SwiftPM's repository cache, \`$extracted\`, extracted with git archive"
+    else
+      checkout_root="$(dirname "$(dirname "$(dirname "$found")")")"
+      whence="the checkout \`$checkout_root\`"
+    fi
     print_skill "$found" \
       "It's the skill of $described, which $pinned_by pins, read from $whence." \
-      ${installed_note:+"$installed_note"}
+      ${installed_problem:+"$installed_problem $(update_hint "$checkout_root")"}
     return 0
   fi
 
@@ -370,7 +391,7 @@ main() {
     say "# verify-gestures: the pinned GestureKit predates the skill"
     say ""
     say "$pinned_by pins $described, and that commit, in \`$predates\`, has no \`$skill_folder\`: the skill came later. Update GestureKit to a commit that has it (\`swift package update GestureKit\`, or Xcode's File > Packages > Update to Latest Package Versions), then load this skill again. A newer skill wouldn't match the gesturekit-drive this commit builds."
-    [ -n "$installed_note" ] && { say ""; say "$installed_note"; }
+    [ -n "$installed_problem" ] && { say ""; say "$installed_problem"; }
     return 0
   fi
 
@@ -385,7 +406,7 @@ main() {
   say ""
   say "Check the pinned commit out, then load this skill again:"
   how_to_resolve "${pin_files[@]}"
-  [ -n "$installed_note" ] && { say ""; say "$installed_note"; }
+  [ -n "$installed_problem" ] && { say ""; say "$installed_problem $(update_hint "")"; }
   return 0
 }
 
