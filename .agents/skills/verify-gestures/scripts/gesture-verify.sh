@@ -30,6 +30,10 @@
 #       simulator shows, after), LABEL.console.txt (GestureKit's log lines
 #       meanwhile), and a line in captures.txt. Exits 1 if the check failed,
 #       or, with no check, if the command did; a check may expect a refusal.
+#   gesture-verify.sh check RUN_DIR LABEL CAPTURED_LABEL JQ_FILTER
+#       Checks a capture's answer again, against another filter, as for a
+#       second sub-feature the same drive proves, keeping LABEL.check.txt
+#       and a line in captures.txt. Exits 1 if it fails.
 #   gesture-verify.sh down RUN_DIR
 #       Quits the app and deletes the run's simulator, only the one the run
 #       made, by its UDID and name, and the run's build folder; keeps RUN_DIR
@@ -308,6 +312,21 @@ cmd_capture() {
   if [ -n "$expect" ]; then [ "$check" = PASS ]; else [ "$ok" = true ] && [ "$status" -eq 0 ]; fi
 }
 
+cmd_check() {
+  load_run "$1"
+  local label="${2:?check needs a label for its verdict}" captured="${3:?check needs the label of the capture it reads}" expect="${4:?check needs a jq filter}"
+  [[ "$label" =~ ^[A-Za-z0-9._-]+$ ]] || die "a label is letters, digits, dots, dashes, and underscores"
+  local answer="$GESTURE_RUN_DIR/$captured.json" base="$GESTURE_RUN_DIR/$label" check
+  [ -f "$answer" ] || die "no capture $captured in $GESTURE_RUN_DIR"
+  [ ! -e "$base.check.txt" ] || die "$base.check.txt exists: give this check its own label"
+  if "$JQ" -e "$expect" "$answer" >/dev/null 2>&1; then check=PASS; else check=FAIL; fi
+  printf 'filter: %s\non: %s.json\nverdict: %s\n' "$expect" "$captured" "$check" >"$base.check.txt"
+  printf '%s\t%s\tok=%s\toutcome=%s\tcheck=%s\t%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$label" \
+    "$("$JQ" -r '.ok // false' "$answer")" "$("$JQ" -r '.outcome // .error // "none"' "$answer")" "$check" "check on $captured" >>"$GESTURE_RUN_DIR/captures.txt"
+  echo "$label: check=$check on $captured.json → $base.check.txt"
+  [ "$check" = PASS ]
+}
+
 cmd_down() {
   load_run "$1"
   [ "${GESTURE_RUN_MADE:-0}" = 1 ] && [ -n "${GESTURE_SIM_UDID:-}" ] || die "run.env doesn't say this run made a simulator; deleting nothing"
@@ -344,6 +363,7 @@ gesture_verify_main() {
     doctor) cmd_doctor "$@" ;;
     drive) cmd_drive "$@" ;;
     capture) cmd_capture "$@" ;;
+    check) cmd_check "$@" ;;
     down) cmd_down "$@" ;;
     help|-h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' ;;
     *) die "no command $command; $0 help lists them" ;;

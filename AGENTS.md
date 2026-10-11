@@ -50,7 +50,8 @@ link to it for Claude Code.
   and tracing and alarms, and how the map is kept honest.
 - [`verify-gestures`](.agents/skills/verify-gestures/SKILL.md): the same
   for any app on GestureKit, with its helper,
-  `scripts/gesture-verify.sh` (`up`, `doctor`, `drive`, `capture`, `down`),
+  `scripts/gesture-verify.sh` (`up`, `doctor`, `drive`, `capture`, `check`,
+  `down`),
   which the lab's skill shares. `gesturekit-drive install-skill` copies it
   into an adopter's repository.
 

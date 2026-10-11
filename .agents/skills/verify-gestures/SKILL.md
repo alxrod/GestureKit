@@ -209,7 +209,9 @@ shutdown all`, `erase all`, or `delete all`; never kill by process name.
 ## Helpers
 
 `$V help` prints the helper's usage: `up`, `doctor`, `drive`, `capture`, and
-`down`, each as above. It needs `jq` (macOS has `/usr/bin/jq`), Xcode's
+`down`, each as above, and `check RUN_DIR LABEL CAPTURED_LABEL JQ`, which
+holds an earlier capture's answer to another filter, for a second
+sub-feature the same drive proves, keeping its verdict as evidence. It needs `jq` (macOS has `/usr/bin/jq`), Xcode's
 command-line tools, and a visionOS simulator runtime. Sourced, it defines its
 functions and runs nothing, for a launcher of your own, as GestureKit's lab
 has (`verify-gesturelab`'s `launch-lab.sh`).

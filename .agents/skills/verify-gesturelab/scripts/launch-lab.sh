@@ -9,6 +9,7 @@
 #   .agents/skills/verify-gesturelab/scripts/launch-lab.sh [--station ID] [--run RUN]
 #   .agents/skills/verify-gestures/scripts/gesture-verify.sh doctor  RUN_DIR
 #   .agents/skills/verify-gestures/scripts/gesture-verify.sh capture RUN_DIR LABEL [--expect JQ] COMMAND [ARGS…]
+#   .agents/skills/verify-gestures/scripts/gesture-verify.sh check   RUN_DIR LABEL CAPTURED_LABEL JQ
 #   .agents/skills/verify-gestures/scripts/gesture-verify.sh drive   RUN_DIR COMMAND [ARGS…]
 #   .agents/skills/verify-gestures/scripts/gesture-verify.sh down    RUN_DIR
 #

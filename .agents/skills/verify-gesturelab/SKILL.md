@@ -138,7 +138,8 @@ which fields prove it.
 | `<label>.state.json` | everything registered after the command: targets, tunings, busy, the lab's state |
 | `<label>.png` | what the simulator shows after it |
 | `<label>.console.txt` | GestureKit's info lines meanwhile, from the simulator's log |
-| `captures.txt` | one line per capture: time, label, ok, outcome, verdict, command |
+| `<label>.check.txt`, from `$V check` | a second filter's verdict on an earlier capture's answer |
+| `captures.txt` | one line per capture or check: time, label, ok, outcome, verdict, command |
 
 Beside them, `run.env` and `launch.log`. `artifacts/` is gitignored, and
 cleanup never touches it.
@@ -200,9 +201,11 @@ Never:
 - `.agents/skills/verify-gesturelab/scripts/launch-lab.sh [--station ID]
   [--run NAME]`: the launch above. Prints `RUN_DIR`.
 - `$V doctor RUN_DIR`, `$V capture RUN_DIR LABEL [--expect JQ] COMMAND
-  [ARGS…]`, `$V drive RUN_DIR COMMAND [ARGS…]`, and `$V down RUN_DIR`: the
-  shared helper of the `verify-gestures` skill, which apps on GestureKit
-  use too. `$V help` prints its usage.
+  [ARGS…]`, `$V check RUN_DIR LABEL CAPTURED_LABEL JQ` (a second filter on
+  a capture's answer, for another sub-feature the same drive proves),
+  `$V drive RUN_DIR COMMAND [ARGS…]`, and `$V down RUN_DIR`: the shared
+  helper of the `verify-gestures` skill, which apps on GestureKit use too.
+  `$V help` prints its usage.
 - For the whole sweep, `scripts/gesture-selftest.sh` drives every station
   in a fresh simulator and exits non-zero at the first failure. Give it a
   name and port of the run's own, as it deletes any simulator of its name
