@@ -57,6 +57,10 @@ struct Driver {
           commands         print the app's commands and what each takes
           send JSON        send any command as JSON
           screenshot [FILE]  save what the simulator shows, as a PNG
+          install-skill [--into DIR] [--replace]
+                           copy GestureKit's verify-gestures skill, which drives and proves an
+                           app's gestures with this tool, into DIR, .agents/skills unless given;
+                           refuses to replace one already there unless --replace
 
         Values: vectors are meters, x right, y up, z toward you, as 0,0,0.05; a grid scrolls
         in points; times are seconds; a value that starts with { or [ is JSON.
@@ -93,7 +97,7 @@ struct Driver {
                     guard let seconds = Double(value) else { return fail("--timeout is a number of seconds.") }
                     timeout = seconds
                 }
-            case "--script":
+            case "--script", "--into", "--replace":
                 rest.append(argument)
             default:
                 if argument.hasPrefix("--") { return fail("Unknown option \(argument).\n\n\(Self.usage)") }
@@ -110,6 +114,7 @@ struct Driver {
             case "help", "-h": print(Self.usage); return 0
             case "launch": return try await launch(rest)
             case "screenshot": return try screenshot(rest.first)
+            case "install-skill": return try installSkill(rest)
             case "targets": return try await targets()
             case "smoke": return try await smoke()
             case "state": return try printAnswer(await get("/state"))
@@ -227,6 +232,71 @@ struct Driver {
             print(interaction["summary"] ?? "?")
         }
         return answer["ok"] as? Bool == true ? 0 : 1
+    }
+
+    // MARK: The skill
+
+    /// The verification skill this package ships for apps on GestureKit, in
+    /// the checkout this tool was built from: `swift run` builds it there,
+    /// from this file, three folders below the package's root.
+    static let shippedSkill = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent(".agents/skills/verify-gestures", isDirectory: true)
+
+    /// Copies the `verify-gestures` skill into `--into`'s folder, the
+    /// current folder's `.agents/skills` unless given, as
+    /// `<folder>/verify-gestures`, refusing to replace one already there
+    /// unless `--replace`, so an adopter's agents inherit how to drive and
+    /// prove its gestures with this tool.
+    func installSkill(_ arguments: [String]) throws -> Int32 {
+        var folder = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent(".agents/skills", isDirectory: true)
+        var replaces = false
+        var rest = arguments
+        while let next = rest.first {
+            rest.removeFirst()
+            switch next {
+            case "--into":
+                guard let path = rest.first else { throw DriveError("--into needs a folder, as --into .agents/skills.") }
+                rest.removeFirst()
+                folder = URL(fileURLWithPath: path, isDirectory: true)
+            case "--replace":
+                replaces = true
+            default:
+                throw DriveError("install-skill takes --into FOLDER and --replace; not \(next).")
+            }
+        }
+        let files = FileManager.default
+        let source = Self.shippedSkill
+        guard files.fileExists(atPath: source.appendingPathComponent("SKILL.md").path) else {
+            throw DriveError("The skill isn't beside this tool's sources, at \(source.path); run gesturekit-drive from a checkout of GestureKit.")
+        }
+        let destination = folder.appendingPathComponent("verify-gestures", isDirectory: true)
+        if files.fileExists(atPath: destination.path) {
+            guard replaces else {
+                throw DriveError("\(destination.path) is there already; add --replace to replace it with GestureKit's.")
+            }
+            try files.removeItem(at: destination)
+        }
+        try files.createDirectory(at: folder, withIntermediateDirectories: true)
+        try files.copyItem(at: source, to: destination)
+        let copied = files.enumerator(atPath: destination.path)?.compactMap { $0 as? String }
+            .filter { !$0.hasPrefix(".") && !$0.contains("/.") }
+            .filter { path in
+                var isFolder: ObjCBool = false
+                return files.fileExists(atPath: destination.appendingPathComponent(path).path, isDirectory: &isFolder) && !isFolder.boolValue
+            }
+            .sorted() ?? []
+        print("Installed GestureKit's verify-gestures skill in \(destination.path):")
+        for path in copied { print("  \(path)") }
+        let claudeSkills = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".claude/skills")
+        if folder.standardizedFileURL.path.hasSuffix("/.agents/skills"), !files.fileExists(atPath: claudeSkills.path) {
+            print("Claude Code reads .claude/skills; to share these, link it: mkdir -p .claude && ln -s ../.agents/skills .claude/skills")
+        }
+        print("Its SKILL.md says how to launch your app, check, drive, capture, and clean up; add /artifacts to your .gitignore.")
+        return 0
     }
 
     // MARK: The simulator
